@@ -1,0 +1,17 @@
+[package]
+name = "hifijson"
+version = "0.1.0"
+edition = "2021"
+authors = ["Michael Färber <michael.faerber@gedenkt.at>"]
+description = "High-fidelity JSON lexer and parser"
+license = "MIT"
+keywords = ["json"]
+categories = ["parser-implementations"]
+
+[features]
+default = ["std", "alloc"]
+std = []
+alloc = []
+
+[dev-dependencies]
+memmap = "0.7.0"

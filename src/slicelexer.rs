@@ -1,4 +1,4 @@
-use crate::{error, escape, Escape, NumParts, Token, Lexer};
+use crate::{error, escape, Escape, Lexer, NumParts};
 use core::num::NonZeroUsize;
 
 /// JSON lexer from a shared byte slice.
@@ -22,14 +22,14 @@ impl<'a> Lexer for SliceLexer<'a> {
     type Bytes = &'a [u8];
     type Num = &'a str;
 
-    fn lex_exact<const N: usize>(&mut self, s: [u8; N], out: Token) -> Token {
+    fn lex_exact<const N: usize, T: Default>(&mut self, s: [u8; N], out: T) -> T {
         // we are calling this function without having advanced before
         self.read_byte();
         if let Some(rest) = self.slice.strip_prefix(&s) {
             self.slice = rest;
             out
         } else {
-            Token::Error
+            T::default()
         }
     }
 

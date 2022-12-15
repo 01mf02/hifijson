@@ -1,5 +1,5 @@
 use crate::escape::{decode_hex4, Escape};
-use crate::{error, Lexer, NumParts, Token};
+use crate::{error, Lexer, NumParts};
 use core::num::NonZeroUsize;
 
 /// JSON lexer from an iterator over (fallible) bytes.
@@ -47,12 +47,12 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
     type Bytes = alloc::vec::Vec<u8>;
     type Num = alloc::string::String;
 
-    fn lex_exact<const N: usize>(&mut self, s: [u8; N], out: Token) -> Token {
+    fn lex_exact<const N: usize, T: Default>(&mut self, s: [u8; N], out: T) -> T {
         self.read_byte();
         for c1 in s {
             match self.read() {
                 Some(c2) if c1 == c2 => continue,
-                Some(_) | None => return Token::Error,
+                Some(_) | None => return T::default()
             }
         }
         out

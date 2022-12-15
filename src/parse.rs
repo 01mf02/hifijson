@@ -34,13 +34,20 @@ impl From<error::Seq> for Error {
     }
 }
 
+/// JSON value.
 #[derive(Debug)]
 pub enum Value<Num, Str> {
+    /// `null`
     Null,
+    /// `true` or `false`
     Bool(bool),
+    /// string representation of a number with positional information
     Number((Num, NumParts)),
+    /// string
     String(Str),
+    /// array
     Array(Vec<Self>),
+    /// mapping from strings to values
     Object(Vec<(Str, Self)>),
 }
 

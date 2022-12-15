@@ -2,6 +2,7 @@ use crate::escape::{decode_hex4, Escape};
 use crate::{error, Lexer, NumParts, Token};
 use core::num::NonZeroUsize;
 
+/// JSON lexer from an iterator over (fallible) bytes.
 pub struct IterLexer<E, I> {
     bytes: I,
     last: Option<u8>,

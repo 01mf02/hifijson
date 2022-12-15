@@ -1,3 +1,5 @@
+//! Lexer errors.
+
 #[derive(Debug)]
 pub enum Num {
     ExpectedDigit,

@@ -1,19 +1,5 @@
-use crate::{EscapeError, IterLexer, Lexer, SliceLexer};
+use crate::{IterLexer, Lexer, SliceLexer, StrError};
 use alloc::{borrow::Cow, string::String};
-
-#[derive(Debug)]
-pub enum StrError {
-    Control,
-    Escape(EscapeError),
-    Eof,
-    Utf8(core::str::Utf8Error),
-}
-
-impl From<EscapeError> for StrError {
-    fn from(e: EscapeError) -> Self {
-        StrError::Escape(e)
-    }
-}
 
 pub trait LexerStr: Lexer {
     type Str: core::ops::Deref<Target = str>;

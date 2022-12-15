@@ -102,17 +102,9 @@ fn lex<L: LexerStr>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Resu
 
 fn lex_string<L: LexerStr>(lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), StrError> {
     print(b"\"");
-    lexer.lex_string(
-        (),
-        |bytes, _out| {
-            print(&core::mem::take(bytes));
-            Ok::<(), StrError>(())
-        },
-        |_lexer, escape, _out| {
-            print(escape.to_string().as_bytes());
-            Ok(())
-        },
-    )?;
+    let mut bytes = L::Bytes::default();
+    lexer.lex_string_raw(&mut bytes)?;
+    print(&bytes);
     print(b"\"");
     Ok(())
 }

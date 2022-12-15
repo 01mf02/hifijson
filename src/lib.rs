@@ -21,7 +21,7 @@ pub use iterlexer::IterLexer;
 #[cfg(feature = "alloc")]
 pub use parse::{parse, parse_many, parse_single, Error, Value};
 #[cfg(feature = "alloc")]
-pub use strparser::{LexerStr, StrError};
+pub use strparser::LexerStr;
 
 pub use escape::Escape;
 
@@ -68,6 +68,14 @@ pub enum EscapeError {
     ExpectedLowSurrogate,
 }
 
+#[derive(Debug)]
+pub enum StrError {
+    Control,
+    Escape(EscapeError),
+    Eof,
+    Utf8(core::str::Utf8Error),
+}
+
 pub trait Lexer {
     type Bytes: Deref<Target = [u8]> + Default;
     type Num: Deref<Target = str>;
@@ -106,7 +114,7 @@ pub trait Lexer {
     fn lex_number(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, NumError>;
 
     /// Read to bytes until `stop` yields true.
-    fn read_until(&mut self, stop: impl Fn(u8) -> bool, bytes: &mut Self::Bytes);
+    fn read_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
 
     fn peek_byte(&self) -> Option<&u8>;
     fn read_byte(&mut self) -> Option<u8>;
@@ -131,6 +139,51 @@ pub trait Lexer {
         char::from_u32(escape).ok_or(EscapeError::InvalidChar(escape))
     }
 
+    fn lex_string_raw(&mut self, bytes: &mut Self::Bytes) -> Result<(), StrError> {
+        let mut escaped = false;
+        let mut unicode = false;
+        let mut hex_pos = 0;
+        let mut error = None;
+
+        self.read_until(bytes, |c| {
+            if escaped {
+                if unicode {
+                    if escape::decode_hex(c).is_none() {
+                        error = Some(StrError::Escape(EscapeError::InvalidHex));
+                        return true;
+                    }
+                    if hex_pos < 3 {
+                        hex_pos += 1
+                    } else {
+                        escaped = false;
+                        unicode = false;
+                        hex_pos = 0;
+                    }
+                    return false;
+                }
+                match Escape::try_from(c) {
+                    Some(Escape::Unicode(_)) => unicode = true,
+                    Some(_) => escaped = false,
+                    None => {
+                        error = Some(StrError::Control);
+                        return true;
+                    }
+                }
+            };
+            match c {
+                b'"' => return true,
+                b'\\' => escaped = true,
+                _ => (),
+            };
+            false
+        });
+        match error {
+            Some(e) => Err(e),
+            None if escaped || self.read_byte() != Some(b'"') => Err(StrError::Eof),
+            _ => Ok(()),
+        }
+    }
+
     fn lex_string<E: From<StrError>, T>(
         &mut self,
         mut out: T,
@@ -142,7 +195,7 @@ pub trait Lexer {
         }
 
         let mut bytes = Self::Bytes::default();
-        self.read_until(string_end, &mut bytes);
+        self.read_until(&mut bytes, string_end);
         fb(&mut bytes, &mut out)?;
         match self.read_byte().ok_or(StrError::Eof)? {
             b'\\' => (),
@@ -152,7 +205,7 @@ pub trait Lexer {
         loop {
             let escape = self.lex_escape().map_err(StrError::Escape)?;
             fe(self, escape, &mut out)?;
-            self.read_until(string_end, &mut bytes);
+            self.read_until(&mut bytes, string_end);
             fb(&mut bytes, &mut out)?;
             match self.read_byte().ok_or(StrError::Eof)? {
                 b'\\' => continue,
@@ -220,7 +273,7 @@ impl<'a> Lexer for SliceLexer<'a> {
 
     fn eat_whitespace(&mut self) {
         let is_space = |c| matches!(c, b' ' | b'\t' | b'\r' | b'\n');
-        self.read_until(|c| !is_space(c), &mut &[][..])
+        self.read_until(&mut &[][..], |c| !is_space(c))
     }
 
     fn lex_number(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, NumError> {
@@ -277,7 +330,7 @@ impl<'a> Lexer for SliceLexer<'a> {
         Some(*head)
     }
 
-    fn read_until(&mut self, stop: impl Fn(u8) -> bool, bytes: &mut &'a [u8]) {
+    fn read_until(&mut self, bytes: &mut &'a [u8], mut stop: impl FnMut(u8) -> bool) {
         let pos = self.slice.iter().position(|c| stop(*c));
         let pos = pos.unwrap_or(self.slice.len());
         *bytes = &self.slice[..pos];

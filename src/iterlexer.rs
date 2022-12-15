@@ -128,7 +128,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
         Ok((alloc::string::String::from_utf8(num).unwrap(), pos))
     }
 
-    fn read_until(&mut self, stop: impl Fn(u8) -> bool, bytes: &mut Self::Bytes) {
+    fn read_until(&mut self, bytes: &mut Self::Bytes, mut stop: impl FnMut(u8) -> bool) {
         while let Some(c) = self.read() {
             if stop(c) {
                 self.last = Some(c);

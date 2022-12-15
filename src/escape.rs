@@ -69,7 +69,7 @@ impl fmt::Display for Escape {
     }
 }
 
-fn decode_hex(val: u8) -> Option<u8> {
+pub(crate) fn decode_hex(val: u8) -> Option<u8> {
     match val {
         b'0'..=b'9' => Some(val - b'0'),
         b'a'..=b'f' => Some(val - b'a' + 10),

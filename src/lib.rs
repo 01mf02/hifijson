@@ -169,6 +169,7 @@ pub trait Lexer {
                         return true;
                     }
                 }
+                return false;
             };
             match c {
                 b'"' => return true,

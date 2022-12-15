@@ -1,5 +1,5 @@
 use crate::escape::{decode_hex4, Escape};
-use crate::{EscapeError, Lexer, NumError, NumParts, Token};
+use crate::{error, Lexer, NumParts, Token};
 use core::num::NonZeroUsize;
 
 pub struct IterLexer<E, I> {
@@ -27,7 +27,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
         }
     }
 
-    fn digits(&mut self, num: &mut <Self as Lexer>::Bytes) -> Result<(), NumError> {
+    fn digits(&mut self, num: &mut <Self as Lexer>::Bytes) -> Result<(), error::Num> {
         let mut some_digit = false;
         while let Some(digit @ (b'0'..=b'9')) = self.last {
             some_digit = true;
@@ -37,7 +37,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
         if some_digit && self.error.is_none() {
             Ok(())
         } else {
-            Err(NumError::ExpectedDigit)
+            Err(error::Num::ExpectedDigit)
         }
     }
 }
@@ -78,7 +78,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
         }
     }
 
-    fn lex_number(&mut self, num: &mut Self::Bytes) -> Result<NumParts, NumError> {
+    fn lex_number(&mut self, num: &mut Self::Bytes) -> Result<NumParts, error::Num> {
         let mut parts = NumParts::default();
 
         if self.last == Some(b'-') {
@@ -120,7 +120,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
         }
     }
 
-    fn parse_number(&mut self) -> Result<(Self::Num, NumParts), NumError> {
+    fn parse_number(&mut self) -> Result<(Self::Num, NumParts), error::Num> {
         let mut num = Default::default();
         let pos = self.lex_number(&mut num)?;
         // SAFETY: conversion to UTF-8 always succeeds because
@@ -147,15 +147,15 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
         self.last.as_ref()
     }
 
-    fn lex_escape(&mut self) -> Result<Escape, EscapeError> {
-        let typ = self.read().ok_or(EscapeError::Eof)?;
-        let escape = Escape::try_from(typ).ok_or(EscapeError::UnknownKind)?;
+    fn lex_escape(&mut self) -> Result<Escape, error::Escape> {
+        let typ = self.read().ok_or(error::Escape::Eof)?;
+        let escape = Escape::try_from(typ).ok_or(error::Escape::UnknownKind)?;
         if matches!(escape, Escape::Unicode(_)) {
             let mut hex = [0; 4];
             for h in &mut hex {
-                *h = self.read().ok_or(EscapeError::Eof)?;
+                *h = self.read().ok_or(error::Escape::Eof)?;
             }
-            let hex = decode_hex4(hex).ok_or(EscapeError::InvalidHex)?;
+            let hex = decode_hex4(hex).ok_or(error::Escape::InvalidHex)?;
             Ok(Escape::Unicode(hex))
         } else {
             Ok(escape)

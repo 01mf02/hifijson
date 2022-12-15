@@ -16,6 +16,8 @@ mod parse;
 #[cfg(feature = "alloc")]
 mod strparser;
 
+/// Lexer errors.
+pub mod error;
 mod escape;
 
 #[cfg(feature = "alloc")]
@@ -29,17 +31,29 @@ pub use escape::Escape;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
+    /// `null`
     Null,
+    /// `true`
     True,
+    /// `false`
     False,
+    /// `,`
     Comma,
+    /// `:`
     Colon,
+    /// `[`
     LSquare,
+    /// `]`
     RSquare,
+    /// `{`
     LCurly,
+    /// `}`
     RCurly,
-    String,
-    Number,
+    /// `"`
+    Quote,
+    /// a digit (0-9) or a minus (`-`)
+    DigitOrMinus,
+    /// anything else
     Error,
 }
 
@@ -47,35 +61,6 @@ pub enum Token {
 pub struct NumParts {
     dot: Option<NonZeroUsize>,
     exp: Option<NonZeroUsize>,
-}
-
-#[derive(Debug)]
-pub enum SeqError {
-    ExpectedItem,
-    ExpectedItemOrEnd,
-    ExpectedCommaOrEnd,
-}
-
-#[derive(Debug)]
-pub enum NumError {
-    ExpectedDigit,
-}
-
-#[derive(Debug)]
-pub enum EscapeError {
-    Eof,
-    UnknownKind,
-    InvalidHex,
-    InvalidChar(u32),
-    ExpectedLowSurrogate,
-}
-
-#[derive(Debug)]
-pub enum StrError {
-    Control,
-    Escape(EscapeError),
-    Eof,
-    Utf8(core::str::Utf8Error),
 }
 
 pub trait Lexer {
@@ -99,8 +84,8 @@ pub trait Lexer {
             b'n' => return self.lex_exact([b'u', b'l', b'l'], Token::Null),
             b't' => return self.lex_exact([b'r', b'u', b'e'], Token::True),
             b'f' => return self.lex_exact([b'a', b'l', b's', b'e'], Token::False),
-            b'0'..=b'9' | b'-' => return Token::Number,
-            b'"' => Token::String,
+            b'0'..=b'9' | b'-' => return Token::DigitOrMinus,
+            b'"' => Token::Quote,
             b'[' => Token::LSquare,
             b']' => Token::RSquare,
             b'{' => Token::LCurly,
@@ -113,7 +98,7 @@ pub trait Lexer {
         token
     }
 
-    fn lex_number(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, NumError>;
+    fn lex_number(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, error::Num>;
 
     /// Read to bytes until `stop` yields true.
     fn read_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
@@ -122,26 +107,26 @@ pub trait Lexer {
     fn read_byte(&mut self) -> Option<u8>;
 
     /// Read an escape sequence such as "\n" or "\u0009" (without leading '\').
-    fn lex_escape(&mut self) -> Result<Escape, EscapeError>;
+    fn lex_escape(&mut self) -> Result<Escape, error::Escape>;
 
-    fn parse_escape(&mut self, escape: Escape) -> Result<char, EscapeError> {
+    fn parse_escape(&mut self, escape: Escape) -> Result<char, error::Escape> {
         let escape = match escape {
             Escape::Unicode(high @ (0xD800..=0xDBFF)) => {
                 if self.read_byte() != Some(b'\\') {
-                    return Err(EscapeError::ExpectedLowSurrogate);
+                    return Err(error::Escape::ExpectedLowSurrogate);
                 }
                 if let Escape::Unicode(low @ (0xDC00..=0xDFFF)) = self.lex_escape()? {
                     ((high - 0xD800) * 0x400 + (low - 0xDC00)) as u32 + 0x10000
                 } else {
-                    return Err(EscapeError::ExpectedLowSurrogate);
+                    return Err(error::Escape::ExpectedLowSurrogate);
                 }
             }
             e => e.as_u16() as u32,
         };
-        char::from_u32(escape).ok_or(EscapeError::InvalidChar(escape))
+        char::from_u32(escape).ok_or(error::Escape::InvalidChar(escape))
     }
 
-    fn lex_string_raw(&mut self, bytes: &mut Self::Bytes) -> Result<(), StrError> {
+    fn lex_string_raw(&mut self, bytes: &mut Self::Bytes) -> Result<(), error::Str> {
         let mut escaped = false;
         let mut unicode = false;
         let mut hex_pos = 0;
@@ -151,7 +136,7 @@ pub trait Lexer {
             if escaped {
                 if unicode {
                     if escape::decode_hex(c).is_none() {
-                        error = Some(StrError::Escape(EscapeError::InvalidHex));
+                        error = Some(error::Str::Escape(error::Escape::InvalidHex));
                     } else if hex_pos < 3 {
                         hex_pos += 1
                     } else {
@@ -163,14 +148,14 @@ pub trait Lexer {
                     match Escape::try_from(c) {
                         Some(Escape::Unicode(_)) => unicode = true,
                         Some(_) => escaped = false,
-                        None => error = Some(StrError::Escape(EscapeError::UnknownKind)),
+                        None => error = Some(error::Str::Escape(error::Escape::UnknownKind)),
                     }
                 }
             } else {
                 match c {
                     b'"' => return true,
                     b'\\' => escaped = true,
-                    0..=19 => error = Some(StrError::Control),
+                    0..=19 => error = Some(error::Str::Control),
                     _ => (),
                 };
             }
@@ -178,12 +163,12 @@ pub trait Lexer {
         });
         match error {
             Some(e) => Err(e),
-            None if escaped || self.read_byte() != Some(b'"') => Err(StrError::Eof),
+            None if escaped || self.read_byte() != Some(b'"') => Err(error::Str::Eof),
             _ => Ok(()),
         }
     }
 
-    fn lex_string<E: From<StrError>, T>(
+    fn lex_string<E: From<error::Str>, T>(
         &mut self,
         mut out: T,
         fb: impl Fn(&mut Self::Bytes, &mut T) -> Result<(), E>,
@@ -196,44 +181,44 @@ pub trait Lexer {
         let mut bytes = Self::Bytes::default();
         self.read_until(&mut bytes, string_end);
         fb(&mut bytes, &mut out)?;
-        match self.read_byte().ok_or(StrError::Eof)? {
+        match self.read_byte().ok_or(error::Str::Eof)? {
             b'\\' => (),
             b'"' => return Ok(out),
-            _ => return Err(StrError::Control)?,
+            _ => return Err(error::Str::Control)?,
         }
         loop {
-            let escape = self.lex_escape().map_err(StrError::Escape)?;
+            let escape = self.lex_escape().map_err(error::Str::Escape)?;
             fe(self, escape, &mut out)?;
             self.read_until(&mut bytes, string_end);
             fb(&mut bytes, &mut out)?;
-            match self.read_byte().ok_or(StrError::Eof)? {
+            match self.read_byte().ok_or(error::Str::Eof)? {
                 b'\\' => continue,
                 b'"' => return Ok(out),
-                _ => return Err(StrError::Control)?,
+                _ => return Err(error::Str::Control)?,
             }
         }
     }
 
-    fn parse_number(&mut self) -> Result<(Self::Num, NumParts), NumError>;
+    fn parse_number(&mut self) -> Result<(Self::Num, NumParts), error::Num>;
 
-    fn seq<E: From<SeqError>, F>(&mut self, until: Token, mut f: F) -> Result<(), E>
+    fn seq<E: From<error::Seq>, F>(&mut self, until: Token, mut f: F) -> Result<(), E>
     where
         F: FnMut(&mut Self, Token) -> Result<(), E>,
     {
-        let mut token = self.ws_token().ok_or(SeqError::ExpectedItemOrEnd)?;
+        let mut token = self.ws_token().ok_or(error::Seq::ExpectedItemOrEnd)?;
         if token == until {
             return Ok(());
         };
 
         loop {
             f(self, token)?;
-            token = self.ws_token().ok_or(SeqError::ExpectedCommaOrEnd)?;
+            token = self.ws_token().ok_or(error::Seq::ExpectedCommaOrEnd)?;
             if token == until {
                 return Ok(());
             } else if token == Token::Comma {
-                token = self.ws_token().ok_or(SeqError::ExpectedItem)?;
+                token = self.ws_token().ok_or(error::Seq::ExpectedItem)?;
             } else {
-                return Err(SeqError::ExpectedCommaOrEnd)?;
+                return Err(error::Seq::ExpectedCommaOrEnd)?;
             }
         }
     }
@@ -275,11 +260,11 @@ impl<'a> Lexer for SliceLexer<'a> {
         self.read_until(&mut &[][..], |c| !is_space(c))
     }
 
-    fn lex_number(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, NumError> {
+    fn lex_number(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, error::Num> {
         let mut pos = usize::from(self.slice[0] == b'-');
         let mut parts = NumParts::default();
 
-        let digits1 = |s| NonZeroUsize::new(digits(s)).ok_or(NumError::ExpectedDigit);
+        let digits1 = |s| NonZeroUsize::new(digits(s)).ok_or(error::Num::ExpectedDigit);
 
         pos += if self.slice.get(pos) == Some(&b'0') {
             1
@@ -311,7 +296,7 @@ impl<'a> Lexer for SliceLexer<'a> {
         }
     }
 
-    fn parse_number(&mut self) -> Result<(Self::Num, NumParts), NumError> {
+    fn parse_number(&mut self) -> Result<(Self::Num, NumParts), error::Num> {
         let mut num = Default::default();
         let pos = self.lex_number(&mut num)?;
         // SAFETY: conversion to UTF-8 always succeeds because
@@ -336,17 +321,17 @@ impl<'a> Lexer for SliceLexer<'a> {
         self.slice = &self.slice[pos..]
     }
 
-    fn lex_escape(&mut self) -> Result<Escape, EscapeError> {
-        let typ = self.slice.first().ok_or(EscapeError::Eof)?;
+    fn lex_escape(&mut self) -> Result<Escape, error::Escape> {
+        let typ = self.slice.first().ok_or(error::Escape::Eof)?;
         self.slice = &self.slice[1..];
-        let escape = Escape::try_from(*typ).ok_or(EscapeError::UnknownKind)?;
+        let escape = Escape::try_from(*typ).ok_or(error::Escape::UnknownKind)?;
         if matches!(escape, Escape::Unicode(_)) {
-            let hex = self.slice.get(..4).ok_or(EscapeError::Eof)?;
+            let hex = self.slice.get(..4).ok_or(error::Escape::Eof)?;
             // SAFETY: `unwrap()` always succeeds, because `slice.get(..4)`
             // must return a slice of size 4 if it succeeds
             let hex: [u8; 4] = hex.try_into().unwrap();
             self.slice = &self.slice[4..];
-            let hex = escape::decode_hex4(hex).ok_or(EscapeError::InvalidHex)?;
+            let hex = escape::decode_hex4(hex).ok_or(error::Escape::InvalidHex)?;
             Ok(Escape::Unicode(hex))
         } else {
             Ok(escape)

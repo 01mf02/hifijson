@@ -1,14 +1,24 @@
 use core::fmt;
 
+/// Escape sequence, such as `\n` or `\u00d6`.
 pub enum Escape {
+    /// `\"`
     QuotationMark,
+    /// `\\`
     ReverseSolidus,
+    /// `\/`
     Solidus,
+    /// `\b`
     Backspace,
+    /// `\f`
     FormFeed,
+    /// `\n`
     LineFeed,
+    /// `\t`
     Tab,
+    /// `\r`
     CarriageReturn,
+    /// `\uHHHH`, where `HHHH` is a hexadecimal number
     Unicode(u16),
 }
 

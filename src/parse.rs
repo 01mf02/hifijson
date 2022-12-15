@@ -1,34 +1,35 @@
-use crate::{LexerStr, NumError, NumParts, SeqError, StrError, Token};
+use crate::{error, LexerStr, NumParts, Token};
 use alloc::vec::Vec;
 use core::fmt;
 use core::ops::Deref;
 
+/// Parse error.
 #[derive(Debug)]
 pub enum Error {
     ExpectedValue,
     ExpectedString,
     ExpectedColon,
     ExpectedEof,
-    Num(NumError),
-    Str(StrError),
-    Seq(SeqError),
+    Num(error::Num),
+    Str(error::Str),
+    Seq(error::Seq),
     Token(Token),
 }
 
-impl From<NumError> for Error {
-    fn from(e: NumError) -> Self {
+impl From<error::Num> for Error {
+    fn from(e: error::Num) -> Self {
         Error::Num(e)
     }
 }
 
-impl From<StrError> for Error {
-    fn from(e: StrError) -> Self {
+impl From<error::Str> for Error {
+    fn from(e: error::Str) -> Self {
         Error::Str(e)
     }
 }
 
-impl From<SeqError> for Error {
-    fn from(e: SeqError) -> Self {
+impl From<error::Seq> for Error {
+    fn from(e: error::Seq) -> Self {
         Error::Seq(e)
     }
 }
@@ -93,8 +94,8 @@ pub fn parse<L: LexerStr>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L
         Token::Null => Ok(Value::Null),
         Token::True => Ok(Value::Bool(true)),
         Token::False => Ok(Value::Bool(false)),
-        Token::Number => Ok(Value::Number(lexer.parse_number()?)),
-        Token::String => Ok(Value::String(lexer.parse_string()?)),
+        Token::DigitOrMinus => Ok(Value::Number(lexer.parse_number()?)),
+        Token::Quote => Ok(Value::String(lexer.parse_string()?)),
         Token::LSquare => Ok(Value::Array({
             let mut arr = Vec::new();
             lexer.seq(Token::RSquare, |lexer, token| {
@@ -107,7 +108,7 @@ pub fn parse<L: LexerStr>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L
             let mut obj = Vec::new();
             lexer.seq(Token::RCurly, |lexer, token| {
                 let key = match token {
-                    Token::String => lexer.parse_string()?,
+                    Token::Quote => lexer.parse_string()?,
                     _ => return Err(Error::ExpectedString),
                 };
                 if lexer.ws_token() != Some(Token::Colon) {

@@ -1,6 +1,7 @@
 //! JSON validator & pretty-printer.
 
-use hifijson::{parse_many, parse_single, Error, IterLexer, LexerStr, SliceLexer, StrError, Token};
+use hifijson::{error, Error};
+use hifijson::{parse_many, parse_single, IterLexer, Lexer, LexerStr, SliceLexer, Token};
 use std::{fs, io};
 
 #[derive(Default)]
@@ -47,17 +48,17 @@ fn process<L: LexerStr>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
     Ok(())
 }
 
-fn lex<L: LexerStr>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Result<(), Error> {
+fn lex<L: Lexer>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Result<(), Error> {
     match token {
         Token::Null => print(b"null"),
         Token::True => print(b"true"),
         Token::False => print(b"false"),
-        Token::Number => {
+        Token::DigitOrMinus => {
             let mut num = Default::default();
             let _pos = lexer.lex_number(&mut num)?;
             print(&num)
         }
-        Token::String => lex_string(lexer, print)?,
+        Token::Quote => lex_string(lexer, print)?,
         Token::LSquare => {
             print(b"[");
             let mut first = true;
@@ -77,20 +78,19 @@ fn lex<L: LexerStr>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Resu
                     print(b",");
                 }
 
-                if token != Token::String {
-                    return Err(Error::ExpectedString);
+                match token {
+                    Token::Quote => lex_string(lexer, print)?,
+                    _ => return Err(Error::ExpectedString),
                 }
-                lex_string(lexer, print)?;
 
                 if lexer.ws_token() != Some(Token::Colon) {
                     return Err(Error::ExpectedColon);
                 }
                 print(b":");
 
-                if let Some(token) = lexer.ws_token() {
-                    lex(lexer, token, print)
-                } else {
-                    Err(Error::ExpectedValue)
+                match lexer.ws_token() {
+                    Some(token) => lex(lexer, token, print),
+                    _ => Err(Error::ExpectedValue),
                 }
             })?;
             print(b"}}")
@@ -100,7 +100,7 @@ fn lex<L: LexerStr>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Resu
     Ok(())
 }
 
-fn lex_string<L: LexerStr>(lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), StrError> {
+fn lex_string<L: Lexer>(lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), error::Str> {
     print(b"\"");
     let mut bytes = L::Bytes::default();
     lexer.lex_string_raw(&mut bytes)?;

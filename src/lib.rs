@@ -1,3 +1,5 @@
+//! High-fidelity JSON lexer and parser.
+
 #![no_std]
 #![forbid(unsafe_code)]
 
@@ -150,33 +152,29 @@ pub trait Lexer {
                 if unicode {
                     if escape::decode_hex(c).is_none() {
                         error = Some(StrError::Escape(EscapeError::InvalidHex));
-                        return true;
-                    }
-                    if hex_pos < 3 {
+                    } else if hex_pos < 3 {
                         hex_pos += 1
                     } else {
                         escaped = false;
                         unicode = false;
                         hex_pos = 0;
                     }
-                    return false;
-                }
-                match Escape::try_from(c) {
-                    Some(Escape::Unicode(_)) => unicode = true,
-                    Some(_) => escaped = false,
-                    None => {
-                        error = Some(StrError::Control);
-                        return true;
+                } else {
+                    match Escape::try_from(c) {
+                        Some(Escape::Unicode(_)) => unicode = true,
+                        Some(_) => escaped = false,
+                        None => error = Some(StrError::Escape(EscapeError::UnknownKind)),
                     }
                 }
-                return false;
-            };
-            match c {
-                b'"' => return true,
-                b'\\' => escaped = true,
-                _ => (),
-            };
-            false
+            } else {
+                match c {
+                    b'"' => return true,
+                    b'\\' => escaped = true,
+                    0..=19 => error = Some(StrError::Control),
+                    _ => (),
+                };
+            }
+            error.is_some()
         });
         match error {
             Some(e) => Err(e),

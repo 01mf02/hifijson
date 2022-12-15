@@ -110,10 +110,9 @@ pub fn parse<L: LexerStr>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L
                     Token::String => lexer.parse_string()?,
                     _ => return Err(Error::ExpectedString),
                 };
-                match lexer.ws_token() {
-                    Some(Token::Colon) => (),
-                    _ => return Err(Error::ExpectedColon),
-                };
+                if lexer.ws_token() != Some(Token::Colon) {
+                    return Err(Error::ExpectedColon);
+                }
                 let value = match lexer.ws_token() {
                     Some(token) => parse(lexer, token)?,
                     _ => return Err(Error::ExpectedValue),

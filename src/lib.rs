@@ -97,7 +97,7 @@ pub trait Lexer {
             b'n' => return self.lex_exact([b'u', b'l', b'l'], Token::Null),
             b't' => return self.lex_exact([b'r', b'u', b'e'], Token::True),
             b'f' => return self.lex_exact([b'a', b'l', b's', b'e'], Token::False),
-            b'0'..=b'9' | b'-' => Token::Number,
+            b'0'..=b'9' | b'-' => return Token::Number,
             b'"' => Token::String,
             b'[' => Token::LSquare,
             b']' => Token::RSquare,

@@ -38,7 +38,7 @@ impl<'a> Lexer for SliceLexer<'a> {
         self.read_until(&mut &[][..], |c| !is_space(c))
     }
 
-    fn lex_number(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, error::Num> {
+    fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, error::Num> {
         let mut pos = usize::from(self.slice[0] == b'-');
         let mut parts = NumParts::default();
 
@@ -74,9 +74,9 @@ impl<'a> Lexer for SliceLexer<'a> {
         }
     }
 
-    fn parse_number(&mut self) -> Result<(Self::Num, NumParts), error::Num> {
+    fn num_string(&mut self) -> Result<(Self::Num, NumParts), error::Num> {
         let mut num = Default::default();
-        let pos = self.lex_number(&mut num)?;
+        let pos = self.num_bytes(&mut num)?;
         // SAFETY: conversion to UTF-8 always succeeds because
         // lex_number validates everything it writes to num
         Ok((core::str::from_utf8(num).unwrap(), pos))
@@ -99,7 +99,7 @@ impl<'a> Lexer for SliceLexer<'a> {
         self.slice = &self.slice[pos..]
     }
 
-    fn lex_escape(&mut self) -> Result<Escape, error::Escape> {
+    fn escape(&mut self) -> Result<Escape, error::Escape> {
         let typ = self.slice.first().ok_or(error::Escape::Eof)?;
         self.slice = &self.slice[1..];
         let escape = Escape::try_from(*typ).ok_or(error::Escape::UnknownKind)?;

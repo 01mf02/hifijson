@@ -52,7 +52,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
         for c1 in s {
             match self.read() {
                 Some(c2) if c1 == c2 => continue,
-                Some(_) | None => return T::default()
+                Some(_) | None => return T::default(),
             }
         }
         out
@@ -79,7 +79,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
         }
     }
 
-    fn lex_number(&mut self, num: &mut Self::Bytes) -> Result<NumParts, error::Num> {
+    fn num_bytes(&mut self, num: &mut Self::Bytes) -> Result<NumParts, error::Num> {
         let mut parts = NumParts::default();
 
         if self.last == Some(b'-') {
@@ -121,9 +121,9 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
         }
     }
 
-    fn parse_number(&mut self) -> Result<(Self::Num, NumParts), error::Num> {
+    fn num_string(&mut self) -> Result<(Self::Num, NumParts), error::Num> {
         let mut num = Default::default();
-        let pos = self.lex_number(&mut num)?;
+        let pos = self.num_bytes(&mut num)?;
         // SAFETY: conversion to UTF-8 always succeeds because
         // lex_number validates everything it writes to num
         Ok((alloc::string::String::from_utf8(num).unwrap(), pos))
@@ -148,7 +148,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
         self.last.as_ref()
     }
 
-    fn lex_escape(&mut self) -> Result<Escape, error::Escape> {
+    fn escape(&mut self) -> Result<Escape, error::Escape> {
         let typ = self.read().ok_or(error::Escape::Eof)?;
         let escape = Escape::try_from(typ).ok_or(error::Escape::UnknownKind)?;
         if matches!(escape, Escape::Unicode(_)) {

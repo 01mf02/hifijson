@@ -101,8 +101,8 @@ pub fn parse<L: LexerStr>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L
         Token::Null => Ok(Value::Null),
         Token::True => Ok(Value::Bool(true)),
         Token::False => Ok(Value::Bool(false)),
-        Token::DigitOrMinus => Ok(Value::Number(lexer.parse_number()?)),
-        Token::Quote => Ok(Value::String(lexer.parse_string()?)),
+        Token::DigitOrMinus => Ok(Value::Number(lexer.num_string()?)),
+        Token::Quote => Ok(Value::String(lexer.str_string()?)),
         Token::LSquare => Ok(Value::Array({
             let mut arr = Vec::new();
             lexer.seq(Token::RSquare, |lexer, token| {
@@ -115,7 +115,7 @@ pub fn parse<L: LexerStr>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L
             let mut obj = Vec::new();
             lexer.seq(Token::RCurly, |lexer, token| {
                 let key = match token {
-                    Token::Quote => lexer.parse_string()?,
+                    Token::Quote => lexer.str_string()?,
                     _ => return Err(Error::ExpectedString),
                 };
                 if lexer.ws_token() != Some(Token::Colon) {

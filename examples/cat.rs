@@ -55,7 +55,7 @@ fn lex<L: Lexer>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Result<
         Token::False => print(b"false"),
         Token::DigitOrMinus => {
             let mut num = Default::default();
-            let _pos = lexer.lex_number(&mut num)?;
+            let _pos = lexer.num_bytes(&mut num)?;
             print(&num)
         }
         Token::Quote => lex_string(lexer, print)?,
@@ -103,7 +103,7 @@ fn lex<L: Lexer>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Result<
 fn lex_string<L: Lexer>(lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), error::Str> {
     print(b"\"");
     let mut bytes = L::Bytes::default();
-    lexer.lex_string_raw(&mut bytes)?;
+    lexer.str_bytes(&mut bytes)?;
     print(&bytes);
     print(b"\"");
     Ok(())

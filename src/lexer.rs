@@ -39,8 +39,13 @@ pub trait Lexer {
     type Bytes: Deref<Target = [u8]> + Default;
     type Num: Deref<Target = str>;
 
-    /// Return `out` if the given byte sequence is read, otherwise default.
-    fn lex_exact<const N: usize, T: Default>(&mut self, s: [u8; N], out: T) -> T;
+    /// Read to bytes until `stop` yields true.
+    fn read_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
+
+    /// Look at the next byte.
+    fn peek_byte(&self) -> Option<&u8>;
+    /// Consume the next byte.
+    fn read_byte(&mut self) -> Option<u8>;
 
     /// Return the earliest non-whitespace character.
     fn eat_whitespace(&mut self);
@@ -50,6 +55,9 @@ pub trait Lexer {
         self.eat_whitespace();
         Some(self.token(*self.peek_byte()?))
     }
+
+    /// Return `out` if the given byte sequence is read, otherwise default.
+    fn lex_exact<const N: usize, T: Default>(&mut self, s: [u8; N], out: T) -> T;
 
     /// Convert a character to a token, such as '`:`' to `Token::Colon`.
     ///
@@ -77,27 +85,20 @@ pub trait Lexer {
         token
     }
 
-    fn lex_number(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, error::Num>;
-    fn parse_number(&mut self) -> Result<(Self::Num, NumParts), error::Num>;
-
-    /// Read to bytes until `stop` yields true.
-    fn read_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
-
-    /// Look at the next byte.
-    fn peek_byte(&self) -> Option<&u8>;
-    /// Consume the next byte.
-    fn read_byte(&mut self) -> Option<u8>;
+    fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, error::Num>;
+    fn num_string(&mut self) -> Result<(Self::Num, NumParts), error::Num>;
 
     /// Read an escape sequence such as "\n" or "\u0009" (without leading '\').
-    fn lex_escape(&mut self) -> Result<Escape, error::Escape>;
+    fn escape(&mut self) -> Result<Escape, error::Escape>;
 
-    fn parse_escape(&mut self, escape: Escape) -> Result<char, error::Escape> {
+    /// Convert a read escape sequence to a char, potentially reading more.
+    fn escape_char(&mut self, escape: Escape) -> Result<char, error::Escape> {
         let escape = match escape {
             Escape::Unicode(high @ (0xD800..=0xDBFF)) => {
                 if self.read_byte() != Some(b'\\') {
                     return Err(error::Escape::ExpectedLowSurrogate);
                 }
-                if let Escape::Unicode(low @ (0xDC00..=0xDFFF)) = self.lex_escape()? {
+                if let Escape::Unicode(low @ (0xDC00..=0xDFFF)) = self.escape()? {
                     ((high - 0xD800) * 0x400 + (low - 0xDC00)) as u32 + 0x10000
                 } else {
                     return Err(error::Escape::ExpectedLowSurrogate);
@@ -109,7 +110,7 @@ pub trait Lexer {
     }
 
     /// Read a string to bytes, copying escape sequences one-to-one.
-    fn lex_string_raw(&mut self, bytes: &mut Self::Bytes) -> Result<(), error::Str> {
+    fn str_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<(), error::Str> {
         let mut escaped = false;
         let mut unicode = false;
         let mut hex_pos = 0;
@@ -152,7 +153,7 @@ pub trait Lexer {
     }
 
     /// Lex a string by executing `on_string` on every string and `on_bytes` on every escape sequence.
-    fn lex_string<E: From<error::Str>, T>(
+    fn str_fold<E: From<error::Str>, T>(
         &mut self,
         mut out: T,
         on_string: impl Fn(&mut Self::Bytes, &mut T) -> Result<(), E>,
@@ -171,7 +172,7 @@ pub trait Lexer {
             _ => return Err(error::Str::Control)?,
         }
         loop {
-            let escape = self.lex_escape().map_err(error::Str::Escape)?;
+            let escape = self.escape().map_err(error::Str::Escape)?;
             on_escape(self, escape, &mut out)?;
             self.read_until(&mut bytes, string_end);
             on_string(&mut bytes, &mut out)?;

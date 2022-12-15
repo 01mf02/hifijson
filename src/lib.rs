@@ -19,6 +19,7 @@ pub mod error;
 mod escape;
 mod lexer;
 mod slicelexer;
+mod read;
 
 #[cfg(feature = "alloc")]
 pub use iterlexer::IterLexer;
@@ -30,6 +31,8 @@ pub use strparser::LexerStr;
 pub use escape::Escape;
 pub use lexer::{Lexer, Token};
 pub use slicelexer::SliceLexer;
+
+use read::Read;
 
 /// Position of `.` and `e`/`E` in the string representation of a number.
 ///

@@ -1,4 +1,4 @@
-use crate::{error, escape, Escape, NumParts};
+use crate::{error, escape, Escape, NumParts, Read};
 use core::ops::Deref;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -35,29 +35,29 @@ impl Default for Token {
     }
 }
 
-pub trait Lexer {
-    type Bytes: Deref<Target = [u8]> + Default;
+pub trait Lexer: Read {
     type Num: Deref<Target = str>;
 
-    /// Read to bytes until `stop` yields true.
-    fn read_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
+    /// Skip input until the earliest non-whitespace character.
+    fn eat_whitespace(&mut self) {
+        self.skip_until(|c| !matches!(c, b' ' | b'\t' | b'\r' | b'\n'))
+    }
 
-    /// Look at the next byte.
-    fn peek_byte(&self) -> Option<&u8>;
-    /// Consume the next byte.
-    fn read_byte(&mut self) -> Option<u8>;
-
-    /// Return the earliest non-whitespace character.
-    fn eat_whitespace(&mut self);
-
-    /// Read (optional) whitespace and return the following token if there is some.
+    /// Skip potential whitespace and return the following token if there is some.
     fn ws_token(&mut self) -> Option<Token> {
         self.eat_whitespace();
         Some(self.token(*self.peek_byte()?))
     }
 
-    /// Return `out` if the given byte sequence is read, otherwise default.
-    fn lex_exact<const N: usize, T: Default>(&mut self, s: [u8; N], out: T) -> T;
+    fn exact<const N: usize, T: Default>(&mut self, s: [u8; N], out: T) -> T {
+        // we are calling this function without having advanced before
+        self.read_byte();
+        if self.strip_prefix(s) {
+            out
+        } else {
+            T::default()
+        }
+    }
 
     /// Convert a character to a token, such as '`:`' to `Token::Colon`.
     ///
@@ -68,9 +68,9 @@ pub trait Lexer {
         let token = match c {
             // it is important to `return` here in order not to read a byte,
             // like we do for the regular, single-character tokens
-            b'n' => return self.lex_exact([b'u', b'l', b'l'], Token::Null),
-            b't' => return self.lex_exact([b'r', b'u', b'e'], Token::True),
-            b'f' => return self.lex_exact([b'a', b'l', b's', b'e'], Token::False),
+            b'n' => return self.exact([b'u', b'l', b'l'], Token::Null),
+            b't' => return self.exact([b'r', b'u', b'e'], Token::True),
+            b'f' => return self.exact([b'a', b'l', b's', b'e'], Token::False),
             b'0'..=b'9' | b'-' => return Token::DigitOrMinus,
             b'"' => Token::Quote,
             b'[' => Token::LSquare,
@@ -88,7 +88,7 @@ pub trait Lexer {
     fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, error::Num>;
     fn num_string(&mut self) -> Result<(Self::Num, NumParts), error::Num>;
 
-    /// Read an escape sequence such as "\n" or "\u0009" (without leading '\').
+    /// Read an escape sequence such as `\n` or `\u0009` (without leading `\`).
     fn escape(&mut self) -> Result<Escape, error::Escape>;
 
     /// Convert a read escape sequence to a char, potentially reading more.
@@ -184,19 +184,20 @@ pub trait Lexer {
         }
     }
 
-    fn seq<E: From<error::Seq>, F>(&mut self, until: Token, mut f: F) -> Result<(), E>
+    /// Execute `f` for every item in the comma-separated sequence until `end`.
+    fn seq<E: From<error::Seq>, F>(&mut self, end: Token, mut f: F) -> Result<(), E>
     where
         F: FnMut(&mut Self, Token) -> Result<(), E>,
     {
         let mut token = self.ws_token().ok_or(error::Seq::ExpectedItemOrEnd)?;
-        if token == until {
+        if token == end {
             return Ok(());
         };
 
         loop {
             f(self, token)?;
             token = self.ws_token().ok_or(error::Seq::ExpectedCommaOrEnd)?;
-            if token == until {
+            if token == end {
                 return Ok(());
             } else if token == Token::Comma {
                 token = self.ws_token().ok_or(error::Seq::ExpectedItem)?;

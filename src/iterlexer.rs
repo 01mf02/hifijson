@@ -1,5 +1,5 @@
 use crate::escape::{decode_hex4, Escape};
-use crate::{error, Lexer, NumParts};
+use crate::{error, Lexer, NumParts, Read};
 use core::num::NonZeroUsize;
 
 /// JSON lexer from an iterator over (fallible) bytes.
@@ -28,7 +28,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
         }
     }
 
-    fn digits(&mut self, num: &mut <Self as Lexer>::Bytes) -> Result<(), error::Num> {
+    fn digits(&mut self, num: &mut <Self as Read>::Bytes) -> Result<(), error::Num> {
         let mut some_digit = false;
         while let Some(digit @ (b'0'..=b'9')) = self.last {
             some_digit = true;
@@ -43,41 +43,60 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
     }
 }
 
-impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
+impl<E, I: Iterator<Item = Result<u8, E>>> Read for IterLexer<E, I> {
     type Bytes = alloc::vec::Vec<u8>;
-    type Num = alloc::string::String;
 
-    fn lex_exact<const N: usize, T: Default>(&mut self, s: [u8; N], out: T) -> T {
-        self.read_byte();
+    fn strip_prefix<const N: usize>(&mut self, s: [u8; N]) -> bool {
         for c1 in s {
             match self.read() {
                 Some(c2) if c1 == c2 => continue,
-                Some(_) | None => return T::default(),
+                Some(_) | None => return false,
             }
         }
-        out
+        true
     }
 
-    fn eat_whitespace(&mut self) {
-        let is_space = |c| matches!(c, b' ' | b'\t' | b'\r' | b'\n');
-
+    fn skip_until(&mut self, mut stop: impl FnMut(u8) -> bool) {
         match self.last {
-            Some(last) if !is_space(last) => return,
+            Some(last) if stop(last) => return,
             _ => self.last = None,
         }
 
         for c in self.bytes.by_ref() {
             match c {
-                Ok(c) if is_space(c) => continue,
+                Ok(c) if !stop(c) => continue,
                 Ok(c) => self.last = Some(c),
                 Err(e) => {
-                    self.last = Some(b' ');
+                    self.last = Some(0);
                     self.error = Some(e);
                 }
             }
             return;
         }
     }
+
+    fn read_until(&mut self, bytes: &mut Self::Bytes, mut stop: impl FnMut(u8) -> bool) {
+        while let Some(c) = self.read() {
+            if stop(c) {
+                self.last = Some(c);
+                return;
+            } else {
+                bytes.push(c)
+            }
+        }
+    }
+
+    fn read_byte(&mut self) -> Option<u8> {
+        self.last.take()
+    }
+
+    fn peek_byte(&self) -> Option<&u8> {
+        self.last.as_ref()
+    }
+}
+
+impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
+    type Num = alloc::string::String;
 
     fn num_bytes(&mut self, num: &mut Self::Bytes) -> Result<NumParts, error::Num> {
         let mut parts = NumParts::default();
@@ -127,25 +146,6 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lexer for IterLexer<E, I> {
         // SAFETY: conversion to UTF-8 always succeeds because
         // lex_number validates everything it writes to num
         Ok((alloc::string::String::from_utf8(num).unwrap(), pos))
-    }
-
-    fn read_until(&mut self, bytes: &mut Self::Bytes, mut stop: impl FnMut(u8) -> bool) {
-        while let Some(c) = self.read() {
-            if stop(c) {
-                self.last = Some(c);
-                return;
-            } else {
-                bytes.push(c)
-            }
-        }
-    }
-
-    fn read_byte(&mut self) -> Option<u8> {
-        self.last.take()
-    }
-
-    fn peek_byte(&self) -> Option<&u8> {
-        self.last.as_ref()
     }
 
     fn escape(&mut self) -> Result<Escape, error::Escape> {

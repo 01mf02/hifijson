@@ -1,4 +1,4 @@
-use crate::{error, escape, Escape, Lexer, NumParts};
+use crate::{error, escape, Escape, Lexer, NumParts, Read};
 use core::num::NonZeroUsize;
 
 /// JSON lexer from a shared byte slice.
@@ -18,25 +18,42 @@ fn digits(s: &[u8]) -> usize {
         .unwrap_or(s.len())
 }
 
-impl<'a> Lexer for SliceLexer<'a> {
+impl<'a> Read for SliceLexer<'a> {
     type Bytes = &'a [u8];
-    type Num = &'a str;
 
-    fn lex_exact<const N: usize, T: Default>(&mut self, s: [u8; N], out: T) -> T {
-        // we are calling this function without having advanced before
-        self.read_byte();
+    fn strip_prefix<const N: usize>(&mut self, s: [u8; N]) -> bool {
         if let Some(rest) = self.slice.strip_prefix(&s) {
             self.slice = rest;
-            out
+            true
         } else {
-            T::default()
+            false
         }
     }
 
-    fn eat_whitespace(&mut self) {
-        let is_space = |c| matches!(c, b' ' | b'\t' | b'\r' | b'\n');
-        self.read_until(&mut &[][..], |c| !is_space(c))
+    fn peek_byte(&self) -> Option<&u8> {
+        self.slice.first()
     }
+
+    fn read_byte(&mut self) -> Option<u8> {
+        let (head, rest) = self.slice.split_first()?;
+        self.slice = rest;
+        Some(*head)
+    }
+
+    fn skip_until(&mut self, stop: impl FnMut(u8) -> bool) {
+        self.read_until(&mut &[][..], stop)
+    }
+
+    fn read_until(&mut self, bytes: &mut &'a [u8], mut stop: impl FnMut(u8) -> bool) {
+        let pos = self.slice.iter().position(|c| stop(*c));
+        let pos = pos.unwrap_or(self.slice.len());
+        *bytes = &self.slice[..pos];
+        self.slice = &self.slice[pos..]
+    }
+}
+
+impl<'a> Lexer for SliceLexer<'a> {
+    type Num = &'a str;
 
     fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<NumParts, error::Num> {
         let mut pos = usize::from(self.slice[0] == b'-');
@@ -80,23 +97,6 @@ impl<'a> Lexer for SliceLexer<'a> {
         // SAFETY: conversion to UTF-8 always succeeds because
         // lex_number validates everything it writes to num
         Ok((core::str::from_utf8(num).unwrap(), pos))
-    }
-
-    fn peek_byte(&self) -> Option<&u8> {
-        self.slice.first()
-    }
-
-    fn read_byte(&mut self) -> Option<u8> {
-        let (head, rest) = self.slice.split_first()?;
-        self.slice = rest;
-        Some(*head)
-    }
-
-    fn read_until(&mut self, bytes: &mut &'a [u8], mut stop: impl FnMut(u8) -> bool) {
-        let pos = self.slice.iter().position(|c| stop(*c));
-        let pos = pos.unwrap_or(self.slice.len());
-        *bytes = &self.slice[..pos];
-        self.slice = &self.slice[pos..]
     }
 
     fn escape(&mut self) -> Result<Escape, error::Escape> {

@@ -1,3 +1,5 @@
+//! Strings without allocation.
+
 use crate::escape::{self, Escape};
 
 #[derive(Debug)]
@@ -10,47 +12,62 @@ pub enum Error {
 
 impl<T> Lex for T where T: escape::Lex {}
 
+#[derive(Default)]
+struct State {
+    escape: Option<Option<usize>>,
+    error: Option<Error>,
+}
+
+impl State {
+    fn process(&mut self, c: u8) -> bool {
+        if let Some(unicode) = &mut self.escape {
+            if let Some(hex_pos) = unicode {
+                if escape::decode_hex(c).is_none() {
+                    self.error = Some(Error::Escape(escape::Error::InvalidHex));
+                } else if *hex_pos < 3 {
+                    *hex_pos += 1
+                } else {
+                    self.escape = None;
+                }
+            } else {
+                match Escape::try_from(c) {
+                    Some(Escape::Unicode(_)) => *unicode = Some(0),
+                    Some(_) => self.escape = None,
+                    None => self.error = Some(Error::Escape(escape::Error::UnknownKind)),
+                }
+            }
+        } else {
+            match c {
+                b'"' => return true,
+                b'\\' => self.escape = Some(None),
+                0..=19 => self.error = Some(Error::Control),
+                _ => return false,
+            };
+        }
+        self.error.is_some()
+    }
+}
+
 pub trait Lex: escape::Lex {
     /// Read a string to bytes, copying escape sequences one-to-one.
     fn str_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<(), Error> {
-        let mut escaped = false;
-        let mut unicode = false;
-        let mut hex_pos = 0;
-        let mut error = None;
-
-        self.read_until(bytes, |c| {
-            if escaped {
-                if unicode {
-                    if escape::decode_hex(c).is_none() {
-                        error = Some(Error::Escape(escape::Error::InvalidHex));
-                    } else if hex_pos < 3 {
-                        hex_pos += 1
-                    } else {
-                        escaped = false;
-                        unicode = false;
-                        hex_pos = 0;
-                    }
-                } else {
-                    match Escape::try_from(c) {
-                        Some(Escape::Unicode(_)) => unicode = true,
-                        Some(_) => escaped = false,
-                        None => error = Some(Error::Escape(escape::Error::UnknownKind)),
-                    }
-                }
-            } else {
-                match c {
-                    b'"' => return true,
-                    b'\\' => escaped = true,
-                    0..=19 => error = Some(Error::Control),
-                    _ => (),
-                };
-            }
-            error.is_some()
-        });
-        match error {
+        let mut state = State::default();
+        self.read_until(bytes, |c| state.process(c));
+        match state.error {
             Some(e) => Err(e),
-            None if escaped || self.read_byte() != Some(b'"') => Err(Error::Eof),
-            _ => Ok(()),
+            None if state.escape.is_some() || self.read_byte() != Some(b'"') => Err(Error::Eof),
+            None => Ok(()),
+        }
+    }
+
+    /// Read a string without saving it.
+    fn str_ignore(&mut self) -> Result<(), Error> {
+        let mut state = State::default();
+        self.skip_until(|c| state.process(c));
+        match state.error {
+            Some(e) => Err(e),
+            None if state.escape.is_some() || self.read_byte() != Some(b'"') => Err(Error::Eof),
+            None => Ok(()),
         }
     }
 

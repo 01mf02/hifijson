@@ -1,3 +1,5 @@
+//! Numbers.
+
 use core::num::NonZeroUsize;
 
 #[derive(Debug)]

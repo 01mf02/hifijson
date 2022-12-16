@@ -1,3 +1,5 @@
+//! Strings with allocation.
+
 use crate::{str, IterLexer, SliceLexer};
 use alloc::{borrow::Cow, string::String};
 

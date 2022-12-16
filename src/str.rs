@@ -14,7 +14,11 @@ impl<T> Lex for T where T: escape::Lex {}
 
 #[derive(Default)]
 struct State {
-    escape: Option<Option<usize>>,
+    // are we in an escape sequence, and if so,
+    // are we in a unicode escape sequence, and if so,
+    // at which position in the hex code are we?
+    escape: Option<Option<u8>>,
+    // did we encounter an error so far?
     error: Option<Error>,
 }
 

@@ -33,12 +33,6 @@ pub enum Token {
     Error,
 }
 
-impl Default for Token {
-    fn default() -> Self {
-        Token::Error
-    }
-}
-
 pub trait Lex: crate::Read {
     /// Skip input until the earliest non-whitespace character.
     fn eat_whitespace(&mut self) {
@@ -51,13 +45,13 @@ pub trait Lex: crate::Read {
         Some(self.token(*self.peek_byte()?))
     }
 
-    fn exact<const N: usize, T: Default>(&mut self, s: [u8; N], out: T) -> T {
+    fn exact<const N: usize>(&mut self, s: [u8; N], out: Token) -> Token {
         // we are calling this function without having advanced before
         self.read_byte();
         if self.strip_prefix(s) {
             out
         } else {
-            T::default()
+            Token::Error
         }
     }
 

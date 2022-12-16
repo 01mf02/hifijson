@@ -96,7 +96,10 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
     }
 }
 
-pub fn from_token<L: LexAlloc>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L::Str>, Error> {
+pub fn from_token<L: LexAlloc>(
+    lexer: &mut L,
+    token: Token,
+) -> Result<Value<L::Num, L::Str>, Error> {
     match token {
         Token::Null => Ok(Value::Null),
         Token::True => Ok(Value::Bool(true)),

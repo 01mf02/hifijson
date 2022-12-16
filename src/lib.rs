@@ -6,42 +6,63 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-use core::num::NonZeroUsize;
-
+pub mod escape;
+pub mod num;
 #[cfg(feature = "alloc")]
-mod iterlexer;
-#[cfg(feature = "alloc")]
-mod parse;
-#[cfg(feature = "alloc")]
-mod strparser;
-
-pub mod error;
-mod escape;
-mod lexer;
-mod slicelexer;
+pub mod parse;
 mod read;
-
+pub mod str;
 #[cfg(feature = "alloc")]
-pub use iterlexer::IterLexer;
-#[cfg(feature = "alloc")]
-pub use parse::{parse, parse_many, parse_single, Error, Value};
-#[cfg(feature = "alloc")]
-pub use strparser::LexerStr;
-
-pub use escape::Escape;
-pub use lexer::{Lexer, Token};
-pub use slicelexer::SliceLexer;
+pub mod string;
+pub mod token;
 
 use read::Read;
+pub use token::Token;
 
-/// Position of `.` and `e`/`E` in the string representation of a number.
-///
-/// Because a number cannot start with `.` or `e`/`E`,
-/// these positions must always be greater than zero.
-#[derive(Debug, Default)]
-pub struct NumParts {
-    /// position of the dot
-    pub dot: Option<NonZeroUsize>,
-    /// position of the exponent character (`e`/`E`)
-    pub exp: Option<NonZeroUsize>,
+pub trait Lex: token::Lex + num::Lex + str::Lex {}
+#[cfg(feature = "alloc")]
+pub trait LexAlloc: Lex + string::Lex {}
+
+impl<T> Lex for T where T: token::Lex + num::Lex + str::Lex {}
+#[cfg(feature = "alloc")]
+impl<T> LexAlloc for T where T: Lex + string::Lex {}
+
+/// JSON lexer from a shared byte slice.
+pub struct SliceLexer<'a> {
+    slice: &'a [u8],
+}
+
+impl<'a> SliceLexer<'a> {
+    pub fn new(slice: &'a [u8]) -> Self {
+        Self { slice }
+    }
+}
+
+#[cfg(feature = "alloc")]
+/// JSON lexer from an iterator over (fallible) bytes.
+pub struct IterLexer<E, I> {
+    bytes: I,
+    last: Option<u8>,
+    error: Option<E>,
+}
+
+#[cfg(feature = "alloc")]
+impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
+    pub fn new(iter: I) -> Self {
+        Self {
+            bytes: iter,
+            last: None,
+            error: None,
+        }
+    }
+
+    fn read(&mut self) -> Option<u8> {
+        match self.bytes.next()? {
+            Ok(b) => Some(b),
+            Err(e) => {
+                self.error = Some(e);
+                None
+            }
+        }
+    }
 }

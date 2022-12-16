@@ -1,7 +1,7 @@
 //! JSON validator & pretty-printer.
 
-use hifijson::{error, Error};
-use hifijson::{parse_many, parse_single, IterLexer, Lexer, LexerStr, SliceLexer, Token};
+use hifijson::parse::{self, Error};
+use hifijson::{str, IterLexer, Lex, LexAlloc, SliceLexer, Token};
 use std::{fs, io};
 
 #[derive(Default)]
@@ -11,17 +11,17 @@ struct Cli {
     silent: bool,
 }
 
-fn process<L: LexerStr>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
+fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
     if cli.parse {
         if cli.many {
-            for v in parse_many(lexer) {
+            for v in parse::many(lexer) {
                 let v = v?;
                 if !cli.silent {
                     println!("{v}")
                 };
             }
         } else {
-            let v = parse_single(lexer)?;
+            let v = parse::exactly_one(lexer)?;
             if !cli.silent {
                 println!("{v}")
             };
@@ -48,7 +48,7 @@ fn process<L: LexerStr>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
     Ok(())
 }
 
-fn lex<L: Lexer>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Result<(), Error> {
+fn lex<L: Lex>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Result<(), Error> {
     match token {
         Token::Null => print(b"null"),
         Token::True => print(b"true"),
@@ -100,7 +100,7 @@ fn lex<L: Lexer>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Result<
     Ok(())
 }
 
-fn lex_string<L: Lexer>(lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), error::Str> {
+fn lex_string<L: Lex>(lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), str::Error> {
     print(b"\"");
     let mut bytes = L::Bytes::default();
     lexer.str_bytes(&mut bytes)?;

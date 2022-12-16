@@ -1,4 +1,4 @@
-use crate::{error, LexerStr, NumParts, Token};
+use crate::{num, str, token, LexAlloc, Token};
 use alloc::vec::Vec;
 use core::fmt;
 use core::ops::Deref;
@@ -10,26 +10,26 @@ pub enum Error {
     ExpectedString,
     ExpectedColon,
     ExpectedEof,
-    Num(error::Num),
-    Str(error::Str),
-    Seq(error::Seq),
+    Num(num::Error),
+    Str(str::Error),
+    Seq(token::Error),
     Token(Token),
 }
 
-impl From<error::Num> for Error {
-    fn from(e: error::Num) -> Self {
+impl From<num::Error> for Error {
+    fn from(e: num::Error) -> Self {
         Error::Num(e)
     }
 }
 
-impl From<error::Str> for Error {
-    fn from(e: error::Str) -> Self {
+impl From<str::Error> for Error {
+    fn from(e: str::Error) -> Self {
         Error::Str(e)
     }
 }
 
-impl From<error::Seq> for Error {
-    fn from(e: error::Seq) -> Self {
+impl From<token::Error> for Error {
+    fn from(e: token::Error) -> Self {
         Error::Seq(e)
     }
 }
@@ -42,7 +42,7 @@ pub enum Value<Num, Str> {
     /// `true` or `false`
     Bool(bool),
     /// string representation of a number with positional information
-    Number((Num, NumParts)),
+    Number((Num, num::Parts)),
     /// string
     String(Str),
     /// array
@@ -96,7 +96,7 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
     }
 }
 
-pub fn parse<L: LexerStr>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L::Str>, Error> {
+pub fn from_token<L: LexAlloc>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L::Str>, Error> {
     match token {
         Token::Null => Ok(Value::Null),
         Token::True => Ok(Value::Bool(true)),
@@ -106,7 +106,7 @@ pub fn parse<L: LexerStr>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L
         Token::LSquare => Ok(Value::Array({
             let mut arr = Vec::new();
             lexer.seq(Token::RSquare, |lexer, token| {
-                arr.push(parse(lexer, token)?);
+                arr.push(from_token(lexer, token)?);
                 Ok::<_, Error>(())
             })?;
             arr
@@ -122,7 +122,7 @@ pub fn parse<L: LexerStr>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L
                     return Err(Error::ExpectedColon);
                 }
                 let value = match lexer.ws_token() {
-                    Some(token) => parse(lexer, token)?,
+                    Some(token) => from_token(lexer, token)?,
                     _ => return Err(Error::ExpectedValue),
                 };
                 obj.push((key, value));
@@ -134,9 +134,9 @@ pub fn parse<L: LexerStr>(lexer: &mut L, token: Token) -> Result<Value<L::Num, L
     }
 }
 
-pub fn parse_single<L: LexerStr>(lexer: &mut L) -> Result<Value<L::Num, L::Str>, Error> {
+pub fn exactly_one<L: LexAlloc>(lexer: &mut L) -> Result<Value<L::Num, L::Str>, Error> {
     let token = lexer.ws_token().ok_or(Error::ExpectedValue)?;
-    let v = parse(lexer, token)?;
+    let v = from_token(lexer, token)?;
     lexer.eat_whitespace();
     match lexer.peek_byte() {
         None => Ok(v),
@@ -144,11 +144,11 @@ pub fn parse_single<L: LexerStr>(lexer: &mut L) -> Result<Value<L::Num, L::Str>,
     }
 }
 
-pub fn parse_many<L: LexerStr>(
+pub fn many<L: LexAlloc>(
     lexer: &mut L,
 ) -> impl Iterator<Item = Result<Value<L::Num, L::Str>, Error>> + '_ {
     core::iter::from_fn(|| {
         let token = lexer.ws_token()?;
-        Some(parse(lexer, token))
+        Some(from_token(lexer, token))
     })
 }

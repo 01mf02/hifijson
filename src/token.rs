@@ -36,18 +36,18 @@ pub enum Token {
 pub trait Lex: crate::Read {
     /// Skip input until the earliest non-whitespace character.
     fn eat_whitespace(&mut self) {
-        self.skip_until(|c| !matches!(c, b' ' | b'\t' | b'\r' | b'\n'))
+        self.skip_next_until(|c| !matches!(c, b' ' | b'\t' | b'\r' | b'\n'))
     }
 
     /// Skip potential whitespace and return the following token if there is some.
     fn ws_token(&mut self) -> Option<Token> {
         self.eat_whitespace();
-        Some(self.token(*self.peek_byte()?))
+        Some(self.token(*self.peek_next()?))
     }
 
     fn exact<const N: usize>(&mut self, s: [u8; N], out: Token) -> Token {
         // we are calling this function without having advanced before
-        self.read_byte();
+        self.take_next();
         if self.strip_prefix(s) {
             out
         } else {
@@ -77,7 +77,7 @@ pub trait Lex: crate::Read {
             b':' => Token::Colon,
             _ => Token::Error,
         };
-        self.read_byte();
+        self.take_next();
         token
     }
 

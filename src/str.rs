@@ -56,10 +56,10 @@ pub trait Lex: escape::Lex {
     /// Read a string to bytes, copying escape sequences one-to-one.
     fn str_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<(), Error> {
         let mut state = State::default();
-        self.read_until(bytes, |c| state.process(c));
+        self.write_until(bytes, |c| state.process(c));
         match state.error {
             Some(e) => Err(e),
-            None if state.escape.is_some() || self.read_byte() != Some(b'"') => Err(Error::Eof),
+            None if state.escape.is_some() || self.take_next() != Some(b'"') => Err(Error::Eof),
             None => Ok(()),
         }
     }
@@ -70,7 +70,7 @@ pub trait Lex: escape::Lex {
         self.skip_until(|c| state.process(c));
         match state.error {
             Some(e) => Err(e),
-            None if state.escape.is_some() || self.read_byte() != Some(b'"') => Err(Error::Eof),
+            None if state.escape.is_some() || self.take_next() != Some(b'"') => Err(Error::Eof),
             None => Ok(()),
         }
     }
@@ -87,9 +87,9 @@ pub trait Lex: escape::Lex {
         }
 
         let mut bytes = Self::Bytes::default();
-        self.read_until(&mut bytes, string_end);
+        self.write_until(&mut bytes, string_end);
         on_string(&mut bytes, &mut out)?;
-        match self.read_byte().ok_or(Error::Eof)? {
+        match self.take_next().ok_or(Error::Eof)? {
             b'\\' => (),
             b'"' => return Ok(out),
             _ => return Err(Error::Control)?,
@@ -97,9 +97,9 @@ pub trait Lex: escape::Lex {
         loop {
             let escape = self.escape().map_err(Error::Escape)?;
             on_escape(self, escape, &mut out)?;
-            self.read_until(&mut bytes, string_end);
+            self.write_until(&mut bytes, string_end);
             on_string(&mut bytes, &mut out)?;
-            match self.read_byte().ok_or(Error::Eof)? {
+            match self.take_next().ok_or(Error::Eof)? {
                 b'\\' => continue,
                 b'"' => return Ok(out),
                 _ => return Err(Error::Control)?,

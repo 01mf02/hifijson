@@ -55,14 +55,4 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
             error: None,
         }
     }
-
-    fn read(&mut self) -> Option<u8> {
-        match self.bytes.next()? {
-            Ok(b) => Some(b),
-            Err(e) => {
-                self.error = Some(e);
-                None
-            }
-        }
-    }
 }

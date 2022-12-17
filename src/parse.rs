@@ -141,7 +141,7 @@ pub fn exactly_one<L: LexAlloc>(lexer: &mut L) -> Result<Value<L::Num, L::Str>, 
     let token = lexer.ws_token().ok_or(Error::ExpectedValue)?;
     let v = from_token(lexer, token)?;
     lexer.eat_whitespace();
-    match lexer.peek_byte() {
+    match lexer.peek_next() {
         None => Ok(v),
         Some(_) => Err(Error::ExpectedEof),
     }

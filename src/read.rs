@@ -2,18 +2,28 @@
 pub trait Read {
     type Bytes: core::ops::Deref<Target = [u8]> + Default;
 
-    /// Ignore input until `stop` yields true.
-    fn skip_until(&mut self, stop: impl FnMut(u8) -> bool);
-    /// Read input to `bytes` until `stop` yields true.
-    fn read_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
-
-    /// Look at the next byte.
-    fn peek_byte(&self) -> Option<&u8>;
-    /// Consume the next byte.
-    fn read_byte(&mut self) -> Option<u8>;
-
     /// Return `true` if the given byte sequence is a prefix of the input.
     fn strip_prefix<const N: usize>(&mut self, s: [u8; N]) -> bool;
+
+    fn skip_until(&mut self, stop: impl FnMut(u8) -> bool);
+
+    /// Ignore input until `stop` yields true.
+    fn skip_next_until(&mut self, stop: impl FnMut(u8) -> bool);
+
+    /// Read input to `bytes` until `stop` yields true.
+    fn write_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
+
+    /// Read a byte, do not put it into buffer.
+    fn read(&mut self) -> Option<u8>;
+
+    /// Read a byte and put it into buffer.
+    fn read_next(&mut self);
+
+    /// Peek at the byte from the buffer.
+    fn peek_next(&self) -> Option<&u8>;
+
+    /// Take the byte from the buffer.
+    fn take_next(&mut self) -> Option<u8>;
 }
 
 impl<'a> Read for crate::SliceLexer<'a> {
@@ -28,25 +38,35 @@ impl<'a> Read for crate::SliceLexer<'a> {
         }
     }
 
-    fn peek_byte(&self) -> Option<&u8> {
-        self.slice.first()
+    fn skip_until(&mut self, stop: impl FnMut(u8) -> bool) {
+        self.write_until(&mut &[][..], stop)
     }
 
-    fn read_byte(&mut self) -> Option<u8> {
+    fn skip_next_until(&mut self, stop: impl FnMut(u8) -> bool) {
+        self.skip_until(stop)
+    }
+
+    fn write_until(&mut self, bytes: &mut &'a [u8], mut stop: impl FnMut(u8) -> bool) {
+        let pos = self.slice.iter().position(|c| stop(*c));
+        let pos = pos.unwrap_or(self.slice.len());
+        *bytes = &self.slice[..pos];
+        self.slice = &self.slice[pos..]
+    }
+
+    fn read(&mut self) -> Option<u8> {
         let (head, rest) = self.slice.split_first()?;
         self.slice = rest;
         Some(*head)
     }
 
-    fn skip_until(&mut self, stop: impl FnMut(u8) -> bool) {
-        self.read_until(&mut &[][..], stop)
+    fn read_next(&mut self) {}
+
+    fn peek_next(&self) -> Option<&u8> {
+        self.slice.first()
     }
 
-    fn read_until(&mut self, bytes: &mut &'a [u8], mut stop: impl FnMut(u8) -> bool) {
-        let pos = self.slice.iter().position(|c| stop(*c));
-        let pos = pos.unwrap_or(self.slice.len());
-        *bytes = &self.slice[..pos];
-        self.slice = &self.slice[pos..]
+    fn take_next(&mut self) -> Option<u8> {
+        self.read()
     }
 }
 
@@ -65,11 +85,6 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Read for crate::IterLexer<E, I> {
     }
 
     fn skip_until(&mut self, mut stop: impl FnMut(u8) -> bool) {
-        match self.last {
-            Some(last) if stop(last) => return,
-            _ => self.last = None,
-        }
-
         for c in self.bytes.by_ref() {
             match c {
                 Ok(c) if !stop(c) => continue,
@@ -81,9 +96,17 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Read for crate::IterLexer<E, I> {
             }
             return;
         }
+        self.last = None
     }
 
-    fn read_until(&mut self, bytes: &mut Self::Bytes, mut stop: impl FnMut(u8) -> bool) {
+    fn skip_next_until(&mut self, mut stop: impl FnMut(u8) -> bool) {
+        match self.last {
+            Some(last) if stop(last) => (),
+            _ => self.skip_until(stop),
+        }
+    }
+
+    fn write_until(&mut self, bytes: &mut Self::Bytes, mut stop: impl FnMut(u8) -> bool) {
         while let Some(c) = self.read() {
             if stop(c) {
                 self.last = Some(c);
@@ -92,13 +115,28 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Read for crate::IterLexer<E, I> {
                 bytes.push(c)
             }
         }
+        self.last = None
     }
 
-    fn read_byte(&mut self) -> Option<u8> {
+    fn read(&mut self) -> Option<u8> {
+        match self.bytes.next()? {
+            Ok(b) => Some(b),
+            Err(e) => {
+                self.error = Some(e);
+                None
+            }
+        }
+    }
+
+    fn read_next(&mut self) {
+        self.skip_until(|_| true)
+    }
+
+    fn take_next(&mut self) -> Option<u8> {
         self.last.take()
     }
 
-    fn peek_byte(&self) -> Option<&u8> {
+    fn peek_next(&self) -> Option<&u8> {
         self.last.as_ref()
     }
 }

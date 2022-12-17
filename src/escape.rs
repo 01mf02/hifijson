@@ -1,3 +1,4 @@
+use crate::Read;
 use core::fmt;
 
 /// Escape sequence, such as `\n` or `\u00d6`.
@@ -88,11 +89,6 @@ pub(crate) fn decode_hex(val: u8) -> Option<u8> {
     }
 }
 
-fn decode_hex4(val: [u8; 4]) -> Option<u16> {
-    val.iter()
-        .try_fold(0, |acc, x| Some((acc << 4) + decode_hex(*x)? as u16))
-}
-
 #[derive(Debug)]
 pub enum Error {
     Eof,
@@ -102,15 +98,12 @@ pub enum Error {
     ExpectedLowSurrogate,
 }
 
-pub trait Lex: crate::Read {
-    /// Read an escape sequence such as `\n` or `\u0009` (without leading `\`).
-    fn escape(&mut self) -> Result<Escape, Error>;
-
+pub trait Lex: Read {
     /// Convert a read escape sequence to a char, potentially reading more.
     fn escape_char(&mut self, escape: Escape) -> Result<char, Error> {
         let escape = match escape {
             Escape::Unicode(high @ (0xD800..=0xDBFF)) => {
-                if self.read_byte() != Some(b'\\') {
+                if self.read() != Some(b'\\') {
                     return Err(Error::ExpectedLowSurrogate);
                 }
                 if let Escape::Unicode(low @ (0xDC00..=0xDFFF)) = self.escape()? {
@@ -123,41 +116,23 @@ pub trait Lex: crate::Read {
         };
         char::from_u32(escape).ok_or(Error::InvalidChar(escape))
     }
-}
 
-impl<'a> Lex for crate::SliceLexer<'a> {
-    fn escape(&mut self) -> Result<Escape, Error> {
-        let typ = self.slice.first().ok_or(Error::Eof)?;
-        self.slice = &self.slice[1..];
-        let escape = Escape::try_from(*typ).ok_or(Error::UnknownKind)?;
-        if matches!(escape, Escape::Unicode(_)) {
-            let hex = self.slice.get(..4).ok_or(Error::Eof)?;
-            // SAFETY: `unwrap()` always succeeds, because `slice.get(..4)`
-            // must return a slice of size 4 if it succeeds
-            let hex: [u8; 4] = hex.try_into().unwrap();
-            self.slice = &self.slice[4..];
-            let hex = decode_hex4(hex).ok_or(Error::InvalidHex)?;
-            Ok(Escape::Unicode(hex))
-        } else {
-            Ok(escape)
-        }
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl<E, I: Iterator<Item = Result<u8, E>>> Lex for crate::IterLexer<E, I> {
+    /// Read an escape sequence such as `\n` or `\u0009` (without leading `\`).
     fn escape(&mut self) -> Result<Escape, Error> {
         let typ = self.read().ok_or(Error::Eof)?;
         let escape = Escape::try_from(typ).ok_or(Error::UnknownKind)?;
         if matches!(escape, Escape::Unicode(_)) {
-            let mut hex = [0; 4];
-            for h in &mut hex {
-                *h = self.read().ok_or(Error::Eof)?;
+            let mut hex = 0;
+            for _ in 0..4 {
+                let h = self.read().ok_or(Error::Eof)?;
+                let h = decode_hex(h).ok_or(Error::InvalidHex)?;
+                hex = (hex << 4) + (h as u16);
             }
-            let hex = decode_hex4(hex).ok_or(Error::InvalidHex)?;
             Ok(Escape::Unicode(hex))
         } else {
             Ok(escape)
         }
     }
 }
+
+impl<T> Lex for T where T: Read {}

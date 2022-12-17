@@ -1,5 +1,6 @@
 //! Numbers.
 
+use crate::Read;
 use core::num::NonZeroUsize;
 
 #[derive(Debug)]
@@ -19,11 +20,73 @@ pub struct Parts {
     pub exp: Option<NonZeroUsize>,
 }
 
-pub trait Lex: crate::Read {
+pub trait Lex: Read {
     type Num: core::ops::Deref<Target = str>;
 
     fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<Parts, Error>;
     fn num_string(&mut self) -> Result<(Self::Num, Parts), Error>;
+
+    fn digits_foreach(&mut self, mut f: impl FnMut(u8)) {
+        while let Some(digit @ (b'0'..=b'9')) = self.peek_next() {
+            f(*digit);
+            self.read_next()
+        }
+    }
+
+    fn digits1_ignore(&mut self) -> Result<usize, Error> {
+        let mut len = 0;
+        self.digits_foreach(|_| len += 1);
+        if len == 0 {
+            return Err(Error::ExpectedDigit);
+        }
+        Ok(len)
+    }
+
+    fn num_ignore(&mut self) -> Result<Parts, Error> {
+        let mut pos = 0;
+        let mut parts = Parts::default();
+
+        if let Some(b'-') = self.peek_next() {
+            self.read_next();
+            pos += 1;
+        }
+
+        match self.take_next() {
+            Some(b'0') => {
+                self.read_next();
+                pos += 1;
+            }
+            Some(b'0'..=b'9') => {
+                self.read_next();
+                pos += 1;
+                self.digits_foreach(|_| pos += 1)
+            }
+            _ => return Err(Error::ExpectedDigit),
+        }
+
+        loop {
+            match self.peek_next() {
+                Some(b'.') if parts.dot.is_none() && parts.exp.is_none() => {
+                    parts.dot = Some(NonZeroUsize::new(pos).unwrap());
+                    self.read_next();
+                    pos += 1 + self.digits1_ignore()?;
+                }
+
+                Some(b'e' | b'E') if parts.exp.is_none() => {
+                    parts.exp = Some(NonZeroUsize::new(pos).unwrap());
+                    self.read_next();
+
+                    if let Some(b'+' | b'-') = self.peek_next() {
+                        self.read_next();
+                        pos += 1;
+                    }
+
+                    pos += 1 + self.digits1_ignore()?;
+                }
+                _ => return Ok(parts),
+            }
+        }
+    }
 }
 
 fn digits(s: &[u8]) -> usize {
@@ -82,7 +145,7 @@ impl<'a> Lex for crate::SliceLexer<'a> {
 
 #[cfg(feature = "alloc")]
 impl<E, I: Iterator<Item = Result<u8, E>>> crate::IterLexer<E, I> {
-    fn digits(&mut self, num: &mut <Self as crate::Read>::Bytes) -> Result<(), Error> {
+    fn digits(&mut self, num: &mut <Self as Read>::Bytes) -> Result<(), Error> {
         let mut some_digit = false;
         while let Some(digit @ (b'0'..=b'9')) = self.last {
             some_digit = true;

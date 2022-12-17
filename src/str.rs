@@ -1,6 +1,7 @@
 //! Strings without allocation.
 
 use crate::escape::{self, Escape};
+use crate::{Read, Write};
 
 #[derive(Debug)]
 pub enum Error {
@@ -9,8 +10,6 @@ pub enum Error {
     Eof,
     Utf8(core::str::Utf8Error),
 }
-
-impl<T> Lex for T where T: escape::Lex {}
 
 #[derive(Default)]
 struct State {
@@ -50,29 +49,33 @@ impl State {
         }
         self.error.is_some()
     }
-}
 
-pub trait Lex: escape::Lex {
-    /// Read a string to bytes, copying escape sequences one-to-one.
-    fn str_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<(), Error> {
-        let mut state = State::default();
-        self.write_until(bytes, |c| state.process(c));
-        match state.error {
+    fn finish(self, mut next: impl FnMut() -> Option<u8>) -> Result<(), Error> {
+        match self.error {
             Some(e) => Err(e),
-            None if state.escape.is_some() || self.take_next() != Some(b'"') => Err(Error::Eof),
+            None if self.escape.is_some() || next() != Some(b'"') => Err(Error::Eof),
             None => Ok(()),
         }
     }
+}
 
+pub trait Lex: escape::Lex {
     /// Read a string without saving it.
     fn str_ignore(&mut self) -> Result<(), Error> {
         let mut state = State::default();
         self.skip_until(|c| state.process(c));
-        match state.error {
-            Some(e) => Err(e),
-            None if state.escape.is_some() || self.take_next() != Some(b'"') => Err(Error::Eof),
-            None => Ok(()),
-        }
+        state.finish(|| self.take_next())
+    }
+}
+
+impl<T> Lex for T where T: escape::Lex {}
+
+pub trait LexWrite: escape::Lex + Read + Write {
+    /// Read a string to bytes, copying escape sequences one-to-one.
+    fn str_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<(), Error> {
+        let mut state = State::default();
+        self.write_until(bytes, |c| state.process(c));
+        state.finish(|| self.take_next())
     }
 
     /// Lex a string by executing `on_string` on every string and `on_bytes` on every escape sequence.
@@ -107,3 +110,5 @@ pub trait Lex: escape::Lex {
         }
     }
 }
+
+impl<T> LexWrite for T where T: Read + Write {}

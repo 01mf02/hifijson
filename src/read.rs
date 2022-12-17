@@ -1,7 +1,5 @@
 /// Low-level input operations.
 pub trait Read {
-    type Bytes: core::ops::Deref<Target = [u8]> + Default;
-
     /// Return `true` if the given byte sequence is a prefix of the input.
     fn strip_prefix<const N: usize>(&mut self, s: [u8; N]) -> bool;
 
@@ -9,9 +7,6 @@ pub trait Read {
 
     /// Ignore input until `stop` yields true.
     fn skip_next_until(&mut self, stop: impl FnMut(u8) -> bool);
-
-    /// Read input to `bytes` until `stop` yields true.
-    fn write_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
 
     /// Read a byte, do not put it into buffer.
     fn read(&mut self) -> Option<u8>;
@@ -27,8 +22,6 @@ pub trait Read {
 }
 
 impl<'a> Read for crate::SliceLexer<'a> {
-    type Bytes = &'a [u8];
-
     fn strip_prefix<const N: usize>(&mut self, s: [u8; N]) -> bool {
         if let Some(rest) = self.slice.strip_prefix(&s) {
             self.slice = rest;
@@ -39,18 +32,12 @@ impl<'a> Read for crate::SliceLexer<'a> {
     }
 
     fn skip_until(&mut self, stop: impl FnMut(u8) -> bool) {
+        use crate::Write;
         self.write_until(&mut &[][..], stop)
     }
 
     fn skip_next_until(&mut self, stop: impl FnMut(u8) -> bool) {
         self.skip_until(stop)
-    }
-
-    fn write_until(&mut self, bytes: &mut &'a [u8], mut stop: impl FnMut(u8) -> bool) {
-        let pos = self.slice.iter().position(|c| stop(*c));
-        let pos = pos.unwrap_or(self.slice.len());
-        *bytes = &self.slice[..pos];
-        self.slice = &self.slice[pos..]
     }
 
     fn read(&mut self) -> Option<u8> {
@@ -70,10 +57,7 @@ impl<'a> Read for crate::SliceLexer<'a> {
     }
 }
 
-#[cfg(feature = "alloc")]
 impl<E, I: Iterator<Item = Result<u8, E>>> Read for crate::IterLexer<E, I> {
-    type Bytes = alloc::vec::Vec<u8>;
-
     fn strip_prefix<const N: usize>(&mut self, s: [u8; N]) -> bool {
         for c1 in s {
             match self.read() {
@@ -104,18 +88,6 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Read for crate::IterLexer<E, I> {
             Some(last) if stop(last) => (),
             _ => self.skip_until(stop),
         }
-    }
-
-    fn write_until(&mut self, bytes: &mut Self::Bytes, mut stop: impl FnMut(u8) -> bool) {
-        while let Some(c) = self.read() {
-            if stop(c) {
-                self.last = Some(c);
-                return;
-            } else {
-                bytes.push(c)
-            }
-        }
-        self.last = None
     }
 
     fn read(&mut self) -> Option<u8> {

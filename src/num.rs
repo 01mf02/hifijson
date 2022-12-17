@@ -1,6 +1,6 @@
 //! Numbers.
 
-use crate::Read;
+use crate::{Read, Write};
 use core::num::NonZeroUsize;
 
 #[derive(Debug)]
@@ -21,11 +21,6 @@ pub struct Parts {
 }
 
 pub trait Lex: Read {
-    type Num: core::ops::Deref<Target = str>;
-
-    fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<Parts, Error>;
-    fn num_string(&mut self) -> Result<(Self::Num, Parts), Error>;
-
     fn digits_foreach(&mut self, mut f: impl FnMut(u8)) {
         while let Some(digit @ (b'0'..=b'9')) = self.peek_next() {
             f(*digit);
@@ -89,13 +84,22 @@ pub trait Lex: Read {
     }
 }
 
+impl<T> Lex for T where T: Read {}
+
+pub trait LexWrite: Lex + Write {
+    type Num: core::ops::Deref<Target = str>;
+
+    fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<Parts, Error>;
+    fn num_string(&mut self) -> Result<(Self::Num, Parts), Error>;
+}
+
 fn digits(s: &[u8]) -> usize {
     s.iter()
         .position(|c| !matches!(c, b'0'..=b'9'))
         .unwrap_or(s.len())
 }
 
-impl<'a> Lex for crate::SliceLexer<'a> {
+impl<'a> LexWrite for crate::SliceLexer<'a> {
     type Num = &'a str;
 
     fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<Parts, Error> {
@@ -145,7 +149,7 @@ impl<'a> Lex for crate::SliceLexer<'a> {
 
 #[cfg(feature = "alloc")]
 impl<E, I: Iterator<Item = Result<u8, E>>> crate::IterLexer<E, I> {
-    fn digits(&mut self, num: &mut <Self as Read>::Bytes) -> Result<(), Error> {
+    fn digits(&mut self, num: &mut <Self as Write>::Bytes) -> Result<(), Error> {
         let mut some_digit = false;
         while let Some(digit @ (b'0'..=b'9')) = self.last {
             some_digit = true;
@@ -161,7 +165,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> crate::IterLexer<E, I> {
 }
 
 #[cfg(feature = "alloc")]
-impl<E, I: Iterator<Item = Result<u8, E>>> Lex for crate::IterLexer<E, I> {
+impl<E, I: Iterator<Item = Result<u8, E>>> LexWrite for crate::IterLexer<E, I> {
     type Num = alloc::string::String;
 
     fn num_bytes(&mut self, num: &mut Self::Bytes) -> Result<Parts, Error> {

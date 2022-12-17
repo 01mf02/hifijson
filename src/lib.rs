@@ -6,11 +6,13 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+mod read;
+mod write;
+
 pub mod escape;
 pub mod num;
 #[cfg(feature = "alloc")]
 pub mod parse;
-mod read;
 pub mod str;
 #[cfg(feature = "alloc")]
 pub mod string;
@@ -18,14 +20,17 @@ pub mod token;
 
 use read::Read;
 pub use token::Token;
+use write::Write;
 
 pub trait Lex: token::Lex + num::Lex + str::Lex {}
+pub trait LexWrite: Lex + num::LexWrite + str::LexWrite {}
 #[cfg(feature = "alloc")]
-pub trait LexAlloc: Lex + string::Lex {}
+pub trait LexAlloc: LexWrite + string::LexAlloc {}
 
 impl<T> Lex for T where T: token::Lex + num::Lex + str::Lex {}
+impl<T> LexWrite for T where T: Lex + num::LexWrite + str::LexWrite {}
 #[cfg(feature = "alloc")]
-impl<T> LexAlloc for T where T: Lex + string::Lex {}
+impl<T> LexAlloc for T where T: LexWrite + string::LexAlloc {}
 
 /// JSON lexer from a shared byte slice.
 pub struct SliceLexer<'a> {
@@ -38,7 +43,6 @@ impl<'a> SliceLexer<'a> {
     }
 }
 
-#[cfg(feature = "alloc")]
 /// JSON lexer from an iterator over (fallible) bytes.
 pub struct IterLexer<E, I> {
     bytes: I,
@@ -46,7 +50,6 @@ pub struct IterLexer<E, I> {
     error: Option<E>,
 }
 
-#[cfg(feature = "alloc")]
 impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
     pub fn new(iter: I) -> Self {
         Self {

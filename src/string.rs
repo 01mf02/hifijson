@@ -1,15 +1,15 @@
 //! Strings with allocation.
 
-use crate::{str, IterLexer, SliceLexer};
+use crate::{str, IterLexer, SliceLexer, Write};
 use alloc::{borrow::Cow, string::String};
 
-pub trait Lex: str::Lex {
+pub trait LexAlloc: str::LexWrite + Write {
     type Str: core::ops::Deref<Target = str>;
 
     fn str_string(&mut self) -> Result<Self::Str, str::Error>;
 }
 
-impl<'a> Lex for SliceLexer<'a> {
+impl<'a> LexAlloc for SliceLexer<'a> {
     type Str = alloc::borrow::Cow<'a, str>;
 
     fn str_string(&mut self) -> Result<Self::Str, str::Error> {
@@ -21,7 +21,7 @@ impl<'a> Lex for SliceLexer<'a> {
             };
             Ok::<_, str::Error>(())
         };
-        use crate::{escape::Lex as _, str::Lex as _};
+        use crate::{escape::Lex as _, str::LexWrite as _};
         self.str_fold(Cow::Borrowed(""), on_string, |lexer, escape, out| {
             out.to_mut()
                 .push(lexer.escape_char(escape).map_err(str::Error::Escape)?);
@@ -30,7 +30,7 @@ impl<'a> Lex for SliceLexer<'a> {
     }
 }
 
-impl<E, I: Iterator<Item = Result<u8, E>>> Lex for IterLexer<E, I> {
+impl<E, I: Iterator<Item = Result<u8, E>>> LexAlloc for IterLexer<E, I> {
     type Str = alloc::string::String;
 
     fn str_string(&mut self) -> Result<Self::Str, str::Error> {
@@ -47,7 +47,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Lex for IterLexer<E, I> {
             };
             Ok::<_, str::Error>(())
         };
-        use crate::{escape::Lex as _, str::Lex as _};
+        use crate::{escape::Lex as _, str::LexWrite as _};
         self.str_fold(Self::Str::new(), on_string, |lexer, escape, out| {
             out.push(lexer.escape_char(escape).map_err(str::Error::Escape)?);
             Ok(())

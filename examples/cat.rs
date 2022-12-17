@@ -111,7 +111,7 @@ fn lex_string<L: Lex>(lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), str::
 
 fn process_file(cli: &Cli, path: &str) -> io::Result<()> {
     let file = fs::File::open(path)?;
-    let mmap = unsafe { memmap::Mmap::map(&file) }?;
+    let mmap = unsafe { memmap2::Mmap::map(&file) }?;
     process(cli, &mut SliceLexer::new(&mmap)).unwrap();
     Ok(())
 }

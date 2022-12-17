@@ -1,3 +1,5 @@
+//! Tokens.
+
 #[derive(Debug)]
 pub enum Error {
     ExpectedItem,

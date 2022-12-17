@@ -9,28 +9,30 @@ extern crate alloc;
 mod read;
 mod write;
 
+use read::Read;
+use write::Write;
+
 pub mod escape;
 pub mod num;
 #[cfg(feature = "alloc")]
 pub mod parse;
 pub mod str;
-#[cfg(feature = "alloc")]
-pub mod string;
 pub mod token;
 
-use read::Read;
 pub use token::Token;
-use write::Write;
 
+/// Lexing without any need for memory allocation.
 pub trait Lex: token::Lex + num::Lex + str::Lex {}
-pub trait LexWrite: Lex + num::LexWrite + str::LexWrite {}
-#[cfg(feature = "alloc")]
-pub trait LexAlloc: LexWrite + string::LexAlloc {}
-
 impl<T> Lex for T where T: token::Lex + num::Lex + str::Lex {}
+
+/// Lexing that does not allocate memory from slices, but from iterators.
+pub trait LexWrite: Lex + num::LexWrite + str::LexWrite {}
 impl<T> LexWrite for T where T: Lex + num::LexWrite + str::LexWrite {}
-#[cfg(feature = "alloc")]
-impl<T> LexAlloc for T where T: LexWrite + string::LexAlloc {}
+
+/// Lexing that allocates memory both from slices and iterators.
+pub trait LexAlloc: LexWrite + str::LexAlloc {}
+impl<T> LexAlloc for T where T: LexWrite + str::LexAlloc {}
+
 
 /// JSON lexer from a shared byte slice.
 pub struct SliceLexer<'a> {

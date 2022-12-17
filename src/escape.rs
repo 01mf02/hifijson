@@ -1,3 +1,5 @@
+//! Escape sequences.
+
 use crate::Read;
 use core::fmt;
 

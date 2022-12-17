@@ -1,3 +1,5 @@
+//! Parsing and values.
+
 use crate::{num, str, token, LexAlloc, Token};
 use alloc::vec::Vec;
 use core::fmt;

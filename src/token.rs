@@ -35,6 +35,17 @@ pub enum Token {
     Error,
 }
 
+impl Token {
+    /// Return `Ok(())` if `self` equals `token`, else return `Err(err)`.
+    pub fn equals_or<E>(&self, token: Token, err: E) -> Result<(), E> {
+        if *self == token {
+            Ok(())
+        } else {
+            Err(err)
+        }
+    }
+}
+
 pub trait Lex: crate::Read {
     /// Skip input until the earliest non-whitespace character.
     fn eat_whitespace(&mut self) {

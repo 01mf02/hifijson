@@ -1,40 +1,9 @@
 //! Parsing and values.
 
-use crate::{num, str, token, LexAlloc, Token};
+use crate::{num, str, Error, LexAlloc, Token};
 use alloc::vec::Vec;
 use core::fmt;
 use core::ops::Deref;
-
-/// Parse error.
-#[derive(Debug)]
-pub enum Error {
-    ExpectedValue,
-    ExpectedString,
-    ExpectedColon,
-    ExpectedEof,
-    Num(num::Error),
-    Str(str::Error),
-    Seq(token::Error),
-    Token(Token),
-}
-
-impl From<num::Error> for Error {
-    fn from(e: num::Error) -> Self {
-        Error::Num(e)
-    }
-}
-
-impl From<str::Error> for Error {
-    fn from(e: str::Error) -> Self {
-        Error::Str(e)
-    }
-}
-
-impl From<token::Error> for Error {
-    fn from(e: token::Error) -> Self {
-        Error::Seq(e)
-    }
-}
 
 /// JSON value.
 #[derive(Debug)]
@@ -119,19 +88,16 @@ pub fn from_token<L: LexAlloc>(
         Token::LCurly => Ok(Value::Object({
             let mut obj = Vec::new();
             lexer.seq(Token::RCurly, |lexer, token| {
-                let key = match token {
-                    Token::Quote => lexer.str_string()?,
-                    _ => return Err(Error::ExpectedString),
-                };
-                if lexer.ws_token() != Some(Token::Colon) {
-                    return Err(Error::ExpectedColon);
-                }
-                let value = match lexer.ws_token() {
-                    Some(token) => from_token(lexer, token)?,
-                    _ => return Err(Error::ExpectedValue),
-                };
+                token.equals_or(Token::Quote, Error::ExpectedString)?;
+                let key = lexer.str_string()?;
+
+                let colon = lexer.ws_token().filter(|t| *t == Token::Colon);
+                colon.ok_or(Error::ExpectedColon)?;
+
+                let token = lexer.ws_token().ok_or(Error::ExpectedValue)?;
+                let value = from_token(lexer, token)?;
                 obj.push((key, value));
-                Ok(())
+                Ok::<_, Error>(())
             })?;
             obj
         })),

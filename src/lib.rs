@@ -18,6 +18,7 @@ pub mod num;
 pub mod parse;
 pub mod str;
 pub mod token;
+pub mod validate;
 
 pub use token::Token;
 
@@ -32,7 +33,6 @@ impl<T> LexWrite for T where T: Lex + num::LexWrite + str::LexWrite {}
 /// Lexing that allocates memory both from slices and iterators.
 pub trait LexAlloc: LexWrite + str::LexAlloc {}
 impl<T> LexAlloc for T where T: LexWrite + str::LexAlloc {}
-
 
 /// JSON lexer from a shared byte slice.
 pub struct SliceLexer<'a> {
@@ -59,5 +59,36 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
             last: None,
             error: None,
         }
+    }
+}
+
+/// Parse error.
+#[derive(Debug)]
+pub enum Error {
+    ExpectedValue,
+    ExpectedString,
+    ExpectedColon,
+    ExpectedEof,
+    Num(num::Error),
+    Str(str::Error),
+    Seq(token::Error),
+    Token(Token),
+}
+
+impl From<num::Error> for Error {
+    fn from(e: num::Error) -> Self {
+        Error::Num(e)
+    }
+}
+
+impl From<str::Error> for Error {
+    fn from(e: str::Error) -> Self {
+        Error::Str(e)
+    }
+}
+
+impl From<token::Error> for Error {
+    fn from(e: token::Error) -> Self {
+        Error::Seq(e)
     }
 }

@@ -14,13 +14,14 @@ use write::Write;
 
 pub mod escape;
 pub mod num;
-#[cfg(feature = "alloc")]
-pub mod parse;
 pub mod str;
 pub mod token;
-pub mod validate;
 
 pub use token::Token;
+
+#[cfg(feature = "alloc")]
+pub mod value;
+pub mod validate;
 
 /// Lexing without any need for memory allocation.
 pub trait Lex: token::Lex + num::Lex + str::Lex {}

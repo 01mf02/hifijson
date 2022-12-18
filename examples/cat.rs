@@ -1,6 +1,6 @@
 //! JSON validator & pretty-printer.
 
-use hifijson::{parse, str, Error, IterLexer, LexAlloc, LexWrite, SliceLexer, Token};
+use hifijson::{value, str, Error, IterLexer, LexAlloc, LexWrite, SliceLexer, Token};
 use std::{fs, io};
 
 #[derive(Default)]
@@ -13,14 +13,14 @@ struct Cli {
 fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
     if cli.parse {
         if cli.many {
-            for v in parse::many(lexer) {
+            for v in value::many(lexer) {
                 let v = v?;
                 if !cli.silent {
                     println!("{v}")
                 };
             }
         } else {
-            let v = parse::exactly_one(lexer)?;
+            let v = value::exactly_one(lexer)?;
             if !cli.silent {
                 println!("{v}")
             };

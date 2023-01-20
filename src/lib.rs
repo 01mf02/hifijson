@@ -62,7 +62,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
         }
     }
 
-    pub fn error(self) -> E {
+    pub fn error(self) -> Option<E> {
         self.error
     }
 }

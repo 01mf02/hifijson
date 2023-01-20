@@ -19,9 +19,9 @@ pub mod token;
 
 pub use token::Token;
 
+pub mod validate;
 #[cfg(feature = "alloc")]
 pub mod value;
-pub mod validate;
 
 /// Lexing without any need for memory allocation.
 pub trait Lex: token::Lex + num::Lex + str::Lex {}
@@ -60,6 +60,10 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
             last: None,
             error: None,
         }
+    }
+
+    pub fn error(self) -> E {
+        self.error
     }
 }
 

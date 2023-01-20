@@ -7,6 +7,17 @@ pub enum Error {
     ExpectedCommaOrEnd,
 }
 
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        use Error::*;
+        match self {
+            ExpectedItem => "item expected".fmt(f),
+            ExpectedItemOrEnd => "item or end of sequence expected".fmt(f),
+            ExpectedCommaOrEnd => "comma or end of sequence expected".fmt(f),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
     /// `null`
@@ -33,6 +44,26 @@ pub enum Token {
     DigitOrMinus,
     /// anything else
     Error,
+}
+
+impl core::fmt::Display for Token {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        use Token::*;
+        match self {
+            Null => "null".fmt(f),
+            True => "true".fmt(f),
+            False => "false".fmt(f),
+            Comma => ",".fmt(f),
+            Colon => ":".fmt(f),
+            LSquare => "[".fmt(f),
+            RSquare => "]".fmt(f),
+            LCurly => "{".fmt(f),
+            RCurly => "}".fmt(f),
+            Quote => '"'.fmt(f),
+            DigitOrMinus => "number".fmt(f),
+            Error => "unknown token".fmt(f),
+        }
+    }
 }
 
 impl Token {

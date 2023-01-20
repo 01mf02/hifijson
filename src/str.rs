@@ -11,6 +11,18 @@ pub enum Error {
     Utf8(core::str::Utf8Error),
 }
 
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        use Error::*;
+        match self {
+            Control => "invalid string control character".fmt(f),
+            Escape(e) => e.fmt(f),
+            Eof => "unterminated string".fmt(f),
+            Utf8(e) => e.fmt(f),
+        }
+    }
+}
+
 #[derive(Default)]
 struct State {
     // are we in an escape sequence, and if so,

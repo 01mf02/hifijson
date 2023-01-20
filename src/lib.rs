@@ -106,7 +106,10 @@ impl Display for Error {
             ExpectedString => "expected string".fmt(f),
             ExpectedColon => "expected colon".fmt(f),
             ExpectedEof => "expected end of file".fmt(f),
-            _ => todo!(),
+            Num(num::Error::ExpectedDigit) => "expected digit".fmt(f),
+            Str(e) => e.fmt(f),
+            Seq(e) => e.fmt(f),
+            Token(t) => write!(f, "unexpected token: {t}"),
         }
     }
 }

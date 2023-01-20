@@ -100,6 +100,20 @@ pub enum Error {
     ExpectedLowSurrogate,
 }
 
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        use Error::*;
+        match self {
+            Eof => "unterminated escape sequence".fmt(f),
+            UnknownKind => "unknown escape sequence type".fmt(f),
+            InvalidHex => "invalid hexadecimal sequence".fmt(f),
+            InvalidChar(c) => write!(f, "invalid character with index {c}"),
+            ExpectedLowSurrogate => "expected low surrogate".fmt(f),
+        }
+    }
+}
+
+
 pub trait Lex: Read {
     /// Convert a read escape sequence to a char, potentially reading more.
     fn escape_char(&mut self, escape: Escape) -> Result<char, Error> {

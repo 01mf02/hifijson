@@ -5,6 +5,8 @@
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
 
 mod read;
 mod write;
@@ -93,3 +95,21 @@ impl From<token::Error> for Error {
         Error::Seq(e)
     }
 }
+
+use core::fmt::{self, Display};
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Error::*;
+        match self {
+            ExpectedValue => "expected value".fmt(f),
+            ExpectedString => "expected string".fmt(f),
+            ExpectedColon => "expected colon".fmt(f),
+            ExpectedEof => "expected end of file".fmt(f),
+            _ => todo!(),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}

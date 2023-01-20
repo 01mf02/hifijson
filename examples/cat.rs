@@ -1,6 +1,6 @@
 //! JSON validator & pretty-printer.
 
-use hifijson::{value, str, Error, IterLexer, LexAlloc, LexWrite, SliceLexer, Token};
+use hifijson::{str, value, Error, IterLexer, LexAlloc, LexWrite, SliceLexer, Token};
 use std::{fs, io};
 
 #[derive(Default)]

@@ -1,7 +1,7 @@
 //! Strings.
 
 use crate::escape::{self, Escape};
-use crate::{IterLexer, Read, SliceLexer, Write};
+use crate::{Read, Write};
 
 #[derive(Debug)]
 pub enum Error {
@@ -120,7 +120,7 @@ pub trait LexAlloc: LexWrite {
 }
 
 #[cfg(feature = "alloc")]
-impl<'a> LexAlloc for SliceLexer<'a> {
+impl<'a> LexAlloc for crate::SliceLexer<'a> {
     type Str = alloc::borrow::Cow<'a, str>;
 
     fn str_string(&mut self) -> Result<Self::Str, Error> {
@@ -144,7 +144,7 @@ impl<'a> LexAlloc for SliceLexer<'a> {
 }
 
 #[cfg(feature = "alloc")]
-impl<E, I: Iterator<Item = Result<u8, E>>> LexAlloc for IterLexer<E, I> {
+impl<E, I: Iterator<Item = Result<u8, E>>> LexAlloc for crate::IterLexer<E, I> {
     type Str = alloc::string::String;
 
     fn str_string(&mut self) -> Result<Self::Str, Error> {

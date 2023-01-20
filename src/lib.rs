@@ -50,7 +50,7 @@ impl<'a> SliceLexer<'a> {
 pub struct IterLexer<E, I> {
     bytes: I,
     last: Option<u8>,
-    error: Option<E>,
+    pub error: Option<E>,
 }
 
 impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
@@ -60,10 +60,6 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
             last: None,
             error: None,
         }
-    }
-
-    pub fn error(self) -> Option<E> {
-        self.error
     }
 }
 

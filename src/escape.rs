@@ -113,7 +113,6 @@ impl core::fmt::Display for Error {
     }
 }
 
-
 pub trait Lex: Read {
     /// Convert a read escape sequence to a char, potentially reading more.
     fn escape_char(&mut self, escape: Escape) -> Result<char, Error> {

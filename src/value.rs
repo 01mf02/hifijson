@@ -22,6 +22,26 @@ pub enum Value<Num, Str> {
     Object(Vec<(Str, Self)>),
 }
 
+impl<NumL: PartialEq<NumR>, NumR, StrL: PartialEq<StrR>, StrR> PartialEq<Value<NumR, StrR>>
+    for Value<NumL, StrL>
+{
+    fn eq(&self, other: &Value<NumR, StrR>) -> bool {
+        use Value::*;
+        match (self, other) {
+            (Null, Null) => true,
+            (Bool(l), Bool(r)) => l == r,
+            (Number((nl, pl)), Number((nr, pr))) => nl == nr && pl == pr,
+            (String(l), String(r)) => l == r,
+            (Array(l), Array(r)) => l == r,
+            (Object(l), Object(r)) => {
+                let mut lr = l.iter().zip(r.iter());
+                l.len() == r.len() && lr.all(|((kl, vl), (kr, vr))| kl == kr && vl == vr)
+            }
+            _ => false,
+        }
+    }
+}
+
 /// Wrapper type to facilitate string printing.
 struct JsonString<Str>(Str);
 

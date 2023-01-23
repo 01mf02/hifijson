@@ -12,7 +12,7 @@ pub enum Error {
 ///
 /// Because a number cannot start with `.` or `e`/`E`,
 /// these positions must always be greater than zero.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Parts {
     /// position of the dot
     pub dot: Option<NonZeroUsize>,

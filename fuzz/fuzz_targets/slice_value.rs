@@ -1,7 +1,7 @@
 #![no_main]
 
-use hifijson::{value, SliceLexer};
+use hifijson::{token::Lex, value, SliceLexer};
 
 libfuzzer_sys::fuzz_target!(|data: &[u8]| {
-    value::exactly_one(&mut SliceLexer::new(data));
+    SliceLexer::new(data).exactly_one(value::from_token);
 });

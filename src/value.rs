@@ -87,9 +87,19 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
     }
 }
 
+fn str_colon<L: LexAlloc>(token: Token, lexer: &mut L) -> Result<L::Str, Error> {
+    token.equals_or(Token::Quote, Error::ExpectedString)?;
+    let key = lexer.str_string()?;
+
+    let colon = lexer.ws_token().filter(|t| *t == Token::Colon);
+    colon.ok_or(Error::ExpectedColon)?;
+
+    Ok(key)
+}
+
 pub fn from_token<L: LexAlloc>(
-    lexer: &mut L,
     token: Token,
+    lexer: &mut L,
 ) -> Result<Value<L::Num, L::Str>, Error> {
     match token {
         Token::Null => Ok(Value::Null),
@@ -99,23 +109,19 @@ pub fn from_token<L: LexAlloc>(
         Token::Quote => Ok(Value::String(lexer.str_string()?)),
         Token::LSquare => Ok(Value::Array({
             let mut arr = Vec::new();
-            lexer.seq(Token::RSquare, |lexer, token| {
-                arr.push(from_token(lexer, token)?);
+            lexer.seq(Token::RSquare, |token, lexer| {
+                arr.push(from_token(token, lexer)?);
                 Ok::<_, Error>(())
             })?;
             arr
         })),
         Token::LCurly => Ok(Value::Object({
             let mut obj = Vec::new();
-            lexer.seq(Token::RCurly, |lexer, token| {
-                token.equals_or(Token::Quote, Error::ExpectedString)?;
-                let key = lexer.str_string()?;
-
-                let colon = lexer.ws_token().filter(|t| *t == Token::Colon);
-                colon.ok_or(Error::ExpectedColon)?;
+            lexer.seq(Token::RCurly, |token, lexer| {
+                let key = str_colon(token, lexer)?;
 
                 let token = lexer.ws_token().ok_or(Error::ExpectedValue)?;
-                let value = from_token(lexer, token)?;
+                let value = from_token(token, lexer)?;
                 obj.push((key, value));
                 Ok::<_, Error>(())
             })?;
@@ -125,13 +131,42 @@ pub fn from_token<L: LexAlloc>(
     }
 }
 
-pub fn exactly_one<L: LexAlloc>(lexer: &mut L) -> Result<Value<L::Num, L::Str>, Error> {
-    let token = lexer.ws_token().ok_or(Error::ExpectedValue)?;
-    let v = from_token(lexer, token)?;
-    lexer.eat_whitespace();
-    match lexer.peek_next() {
-        None => Ok(v),
-        Some(_) => Err(Error::ExpectedEof),
+pub fn parse_depth<L: LexAlloc>(
+    depth: usize,
+    token: Token,
+    lexer: &mut L,
+) -> Result<Value<L::Num, L::Str>, Error> {
+    if depth == 0 {
+        todo!()
+    };
+
+    match token {
+        Token::Null => Ok(Value::Null),
+        Token::True => Ok(Value::Bool(true)),
+        Token::False => Ok(Value::Bool(false)),
+        Token::DigitOrMinus => Ok(Value::Number(lexer.num_string()?)),
+        Token::Quote => Ok(Value::String(lexer.str_string()?)),
+        Token::LSquare => Ok(Value::Array({
+            let mut arr = Vec::new();
+            lexer.seq(Token::RSquare, |token, lexer| {
+                arr.push(parse_depth(depth - 1, token, lexer)?);
+                Ok::<_, Error>(())
+            })?;
+            arr
+        })),
+        Token::LCurly => Ok(Value::Object({
+            let mut obj = Vec::new();
+            lexer.seq(Token::RCurly, |token, lexer| {
+                let key = str_colon(token, lexer)?;
+
+                let token = lexer.ws_token().ok_or(Error::ExpectedValue)?;
+                let value = parse_depth(depth - 1, token, lexer)?;
+                obj.push((key, value));
+                Ok::<_, Error>(())
+            })?;
+            obj
+        })),
+        token => Err(Error::Token(token)),
     }
 }
 
@@ -140,6 +175,6 @@ pub fn many<L: LexAlloc>(
 ) -> impl Iterator<Item = Result<Value<L::Num, L::Str>, Error>> + '_ {
     core::iter::from_fn(|| {
         let token = lexer.ws_token()?;
-        Some(from_token(lexer, token))
+        Some(from_token(token, lexer))
     })
 }

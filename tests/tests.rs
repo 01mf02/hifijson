@@ -25,13 +25,15 @@ fn obj<const N: usize, Num, Str>(v: [(Str, Value<Num, Str>); N]) -> Value<Num, S
 }
 
 fn parses_to(slice: &[u8], v: Value<&str, &str>) -> Result<(), Error> {
-    validate::exactly_one(&mut SliceLexer::new(slice))?;
-    validate::exactly_one(&mut IterLexer::new(slice.iter().copied().map(Ok::<_, ()>)))?;
+    use hifijson::token::Lex;
 
-    let parsed = value::exactly_one(&mut SliceLexer::new(slice))?;
+    SliceLexer::new(slice).exactly_one(validate::from_token)?;
+    IterLexer::new(slice.iter().copied().map(Ok::<_, ()>)).exactly_one(validate::from_token)?;
+
+    let parsed = SliceLexer::new(slice).exactly_one(value::from_token)?;
     assert_eq!(parsed, v);
 
-    let parsed = value::exactly_one(&mut IterLexer::new(slice.iter().copied().map(Ok::<_, ()>)))?;
+    let parsed = IterLexer::new(slice.iter().copied().map(Ok::<_, ()>)).exactly_one(value::from_token)?;
     assert_eq!(parsed, v);
 
     Ok(())

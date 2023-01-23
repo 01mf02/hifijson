@@ -5,6 +5,8 @@ pub enum Error {
     ExpectedItem,
     ExpectedItemOrEnd,
     ExpectedCommaOrEnd,
+    ExpectedToken,
+    ExpectedEof,
 }
 
 impl core::fmt::Display for Error {
@@ -14,6 +16,7 @@ impl core::fmt::Display for Error {
             ExpectedItem => "item expected".fmt(f),
             ExpectedItemOrEnd => "item or end of sequence expected".fmt(f),
             ExpectedCommaOrEnd => "comma or end of sequence expected".fmt(f),
+            _ => todo!(),
         }
     }
 }
@@ -128,7 +131,7 @@ pub trait Lex: crate::Read {
     /// Execute `f` for every item in the comma-separated sequence until `end`.
     fn seq<E: From<Error>, F>(&mut self, end: Token, mut f: F) -> Result<(), E>
     where
-        F: FnMut(&mut Self, Token) -> Result<(), E>,
+        F: FnMut(Token, &mut Self) -> Result<(), E>,
     {
         let mut token = self.ws_token().ok_or(Error::ExpectedItemOrEnd)?;
         if token == end {
@@ -136,7 +139,7 @@ pub trait Lex: crate::Read {
         };
 
         loop {
-            f(self, token)?;
+            f(token, self)?;
             token = self.ws_token().ok_or(Error::ExpectedCommaOrEnd)?;
             if token == end {
                 return Ok(());
@@ -145,6 +148,19 @@ pub trait Lex: crate::Read {
             } else {
                 return Err(Error::ExpectedCommaOrEnd)?;
             }
+        }
+    }
+
+    fn exactly_one<T, E: From<Error>, F>(&mut self, f: F) -> Result<T, E>
+    where
+        F: FnOnce(Token, &mut Self) -> Result<T, E>,
+    {
+        let token = self.ws_token().ok_or(Error::ExpectedToken)?;
+        let v = f(token, self)?;
+        self.eat_whitespace();
+        match self.peek_next() {
+            None => Ok(v),
+            Some(_) => Err(Error::ExpectedEof)?,
         }
     }
 }

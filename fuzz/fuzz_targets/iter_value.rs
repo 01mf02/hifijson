@@ -1,7 +1,7 @@
 #![no_main]
 
-use hifijson::{value, IterLexer};
+use hifijson::{token::Lex, value, IterLexer};
 
 libfuzzer_sys::fuzz_target!(|data: &[u8]| {
-    value::exactly_one(&mut IterLexer::new(data.iter().copied().map(Ok::<_, ()>)));
+    IterLexer::new(data.iter().copied().map(Ok::<_, ()>)).exactly_one(value::from_token);
 });

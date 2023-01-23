@@ -20,7 +20,7 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
                 };
             }
         } else {
-            let v = value::exactly_one(lexer)?;
+            let v = lexer.exactly_one(value::from_token)?;
             if !cli.silent {
                 println!("{v}")
             };
@@ -32,10 +32,10 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
                 panic!("{:?}", Error::ExpectedEof);
             }
             if cli.silent {
-                lex(lexer, token, &|_| ())?;
+                lex(token, lexer, &|_| ())?;
             } else {
                 use std::io::Write;
-                lex(lexer, token, &|b| io::stdout().write_all(b).unwrap())?;
+                lex(token, lexer, &|b| io::stdout().write_all(b).unwrap())?;
                 println!();
             }
             seen = true;
@@ -47,7 +47,7 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
     Ok(())
 }
 
-fn lex<L: LexWrite>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Result<(), Error> {
+fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), Error> {
     match token {
         Token::Null => print(b"null"),
         Token::True => print(b"true"),
@@ -61,18 +61,18 @@ fn lex<L: LexWrite>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Resu
         Token::LSquare => {
             print(b"[");
             let mut first = true;
-            lexer.seq(Token::RSquare, |lexer, token| {
+            lexer.seq(Token::RSquare, |token, lexer| {
                 if !core::mem::take(&mut first) {
                     print(b",");
                 }
-                lex(lexer, token, print)
+                lex(token, lexer, print)
             })?;
             print(b"]");
         }
         Token::LCurly => {
             print(b"{{");
             let mut first = true;
-            lexer.seq(Token::RCurly, |lexer, token| {
+            lexer.seq(Token::RCurly, |token, lexer| {
                 if !core::mem::take(&mut first) {
                     print(b",");
                 }
@@ -88,7 +88,7 @@ fn lex<L: LexWrite>(lexer: &mut L, token: Token, print: &impl Fn(&[u8])) -> Resu
                 print(b":");
 
                 match lexer.ws_token() {
-                    Some(token) => lex(lexer, token, print),
+                    Some(token) => lex(token, lexer, print),
                     _ => Err(Error::ExpectedValue),
                 }
             })?;

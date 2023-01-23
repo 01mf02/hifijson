@@ -46,7 +46,7 @@ pub trait Lex: Read {
             pos += 1;
         }
 
-        match self.take_next() {
+        match self.peek_next() {
             Some(b'0') => {
                 self.read_next();
                 pos += 1;

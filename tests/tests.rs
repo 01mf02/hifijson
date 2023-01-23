@@ -25,10 +25,8 @@ fn obj<const N: usize, Num, Str>(v: [(Str, Value<Num, Str>); N]) -> Value<Num, S
 }
 
 fn parses_to(slice: &[u8], v: Value<&str, &str>) -> Result<(), Error> {
-    /*
     validate::exactly_one(&mut SliceLexer::new(slice))?;
     validate::exactly_one(&mut IterLexer::new(slice.iter().copied().map(Ok::<_, ()>)))?;
-    */
 
     let parsed = value::exactly_one(&mut SliceLexer::new(slice))?;
     assert_eq!(parsed, v);
@@ -50,7 +48,10 @@ fn basic() -> Result<(), Error> {
 #[test]
 fn numbers() -> Result<(), Error> {
     parses_to(b"0", num("0", None, None))?;
+    parses_to(b"42", num("42", None, None))?;
+    parses_to(b"-0", num("-0", None, None))?;
     parses_to(b"-42", num("-42", None, None))?;
+
     parses_to(b"3.14", num("3.14", Some(1), None))?;
 
     // speed of light in m/s

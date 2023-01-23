@@ -46,7 +46,9 @@ impl<'a> Read for crate::SliceLexer<'a> {
         Some(*head)
     }
 
-    fn read_next(&mut self) {}
+    fn read_next(&mut self) {
+        self.slice = &self.slice[1..]
+    }
 
     fn peek_next(&self) -> Option<&u8> {
         self.slice.first()

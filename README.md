@@ -103,5 +103,14 @@ This parser makes the following choices:
 Furthermore, the parser passes all tests of the
 [JSON parsing test suite](https://github.com/nst/JSONTestSuite).
 
+
+## Fuzzing
+
+To run the fuzzer, [install `cargo-fuzz`](https://rust-fuzz.github.io/book/cargo-fuzz/setup.html).
+Then, if you do not wish to use the nightly Rust compiler as default,
+run the fuzzer by `cargo +nightly fuzz run <target>`, where
+`<target>` is any entry returned by `cargo +nightly fuzz list`.
+
+
 [`serde-json-core`]: https://github.com/rust-embedded-community/serde-json-core
 [RFC 8259]: https://www.rfc-editor.org/rfc/rfc8259

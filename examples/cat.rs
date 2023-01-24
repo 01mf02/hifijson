@@ -20,7 +20,7 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
                 };
             }
         } else {
-            let v = lexer.exactly_one(value::from_token)?;
+            let v = lexer.exactly_one(value::parse_unbounded)?;
             if !cli.silent {
                 println!("{}", v)
             };

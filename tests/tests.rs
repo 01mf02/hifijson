@@ -34,10 +34,10 @@ fn parses_to(slice: &[u8], v: Value<&str, &str>) -> Result<(), Error> {
     SliceLexer::new(slice).exactly_one(validate::from_token)?;
     IterLexer::new(iter_of_slice(slice)).exactly_one(validate::from_token)?;
 
-    let parsed = SliceLexer::new(slice).exactly_one(value::from_token)?;
+    let parsed = SliceLexer::new(slice).exactly_one(value::parse_unbounded)?;
     assert_eq!(parsed, v);
 
-    let parsed = IterLexer::new(iter_of_slice(slice)).exactly_one(value::from_token)?;
+    let parsed = IterLexer::new(iter_of_slice(slice)).exactly_one(value::parse_unbounded)?;
     assert_eq!(parsed, v);
 
     Ok(())

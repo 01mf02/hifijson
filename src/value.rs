@@ -87,9 +87,10 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
     }
 }
 
-pub fn from_token<L: LexAlloc>(
+fn parse<L: LexAlloc>(
     token: Token,
     lexer: &mut L,
+    f: impl Fn(Token, &mut L) -> Result<Value<L::Num, L::Str>, Error>,
 ) -> Result<Value<L::Num, L::Str>, Error> {
     match token {
         Token::Null => Ok(Value::Null),
@@ -100,7 +101,7 @@ pub fn from_token<L: LexAlloc>(
         Token::LSquare => Ok(Value::Array({
             let mut arr = Vec::new();
             lexer.seq(Token::RSquare, |token, lexer| {
-                arr.push(from_token(token, lexer)?);
+                arr.push(f(token, lexer)?);
                 Ok::<_, Error>(())
             })?;
             arr
@@ -109,7 +110,7 @@ pub fn from_token<L: LexAlloc>(
             let mut obj = Vec::new();
             lexer.seq(Token::RCurly, |token, lexer| {
                 let key = lexer.str_colon(token, |lexer| lexer.str_string().map_err(Error::Str))?;
-                let value = from_token(lexer.ws_token().ok_or(Error::ExpectedValue)?, lexer)?;
+                let value = f(lexer.ws_token().ok_or(Error::ExpectedValue)?, lexer)?;
                 obj.push((key, value));
                 Ok::<_, Error>(())
             })?;
@@ -119,41 +120,24 @@ pub fn from_token<L: LexAlloc>(
     }
 }
 
-pub fn parse_depth<L: LexAlloc>(
+pub fn parse_unbounded<L: LexAlloc>(
+    token: Token,
+    lexer: &mut L,
+) -> Result<Value<L::Num, L::Str>, Error> {
+    parse(token, lexer, parse_unbounded)
+}
+
+pub fn parse_bounded<L: LexAlloc>(
     depth: usize,
     token: Token,
     lexer: &mut L,
 ) -> Result<Value<L::Num, L::Str>, Error> {
-    if depth == 0 {
-        return Err(Error::Depth);
-    };
-
-    match token {
-        Token::LSquare => Ok(Value::Array({
-            let mut arr = Vec::new();
-            lexer.seq(Token::RSquare, |token, lexer| {
-                arr.push(parse_depth(depth - 1, token, lexer)?);
-                Ok::<_, Error>(())
-            })?;
-            arr
-        })),
-        Token::LCurly => Ok(Value::Object({
-            let mut obj = Vec::new();
-            lexer.seq(Token::RCurly, |token, lexer| {
-                let key = lexer.str_colon(token, |lexer| lexer.str_string().map_err(Error::Str))?;
-
-                let token = lexer.ws_token().ok_or(Error::ExpectedValue)?;
-                obj.push((key, parse_depth(depth - 1, token, lexer)?));
-                Ok::<_, Error>(())
-            })?;
-            obj
-        })),
-        token => from_token(token, lexer),
-    }
+    let d = depth.checked_sub(1).ok_or(Error::Depth)?;
+    parse(token, lexer, |token, lexer| parse_bounded(d, token, lexer))
 }
 
 pub fn many<L: LexAlloc>(
     lexer: &mut L,
 ) -> impl Iterator<Item = Result<Value<L::Num, L::Str>, Error>> + '_ {
-    core::iter::from_fn(|| Some(from_token(lexer.ws_token()?, lexer)))
+    core::iter::from_fn(|| Some(parse_unbounded(lexer.ws_token()?, lexer)))
 }

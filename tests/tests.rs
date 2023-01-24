@@ -24,16 +24,20 @@ fn obj<const N: usize, Num, Str>(v: [(Str, Value<Num, Str>); N]) -> Value<Num, S
     Value::Object(v.into())
 }
 
+fn iter_of_slice(slice: &[u8]) -> impl Iterator<Item = Result<u8, ()>> + '_ {
+    slice.iter().copied().map(Ok)
+}
+
 fn parses_to(slice: &[u8], v: Value<&str, &str>) -> Result<(), Error> {
     use hifijson::token::Lex;
 
     SliceLexer::new(slice).exactly_one(validate::from_token)?;
-    IterLexer::new(slice.iter().copied().map(Ok::<_, ()>)).exactly_one(validate::from_token)?;
+    IterLexer::new(iter_of_slice(slice)).exactly_one(validate::from_token)?;
 
     let parsed = SliceLexer::new(slice).exactly_one(value::from_token)?;
     assert_eq!(parsed, v);
 
-    let parsed = IterLexer::new(slice.iter().copied().map(Ok::<_, ()>)).exactly_one(value::from_token)?;
+    let parsed = IterLexer::new(iter_of_slice(slice)).exactly_one(value::from_token)?;
     assert_eq!(parsed, v);
 
     Ok(())

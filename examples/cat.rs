@@ -1,6 +1,6 @@
 //! JSON validator & pretty-printer.
 
-use hifijson::{str, value, Error, IterLexer, LexAlloc, LexWrite, SliceLexer, Token};
+use hifijson::{str, token, value, Error, IterLexer, LexAlloc, LexWrite, SliceLexer, Token};
 use std::{fs, io};
 
 #[derive(Default)]
@@ -29,7 +29,7 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
         let mut seen = false;
         while let Some(token) = lexer.ws_token() {
             if seen && !cli.many {
-                panic!("{:?}", Error::ExpectedEof);
+                Err(token::Error::ExpectedEof)?
             }
             if cli.silent {
                 lex(token, lexer, &|_| ())?;
@@ -41,7 +41,7 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
             seen = true;
         }
         if !cli.many && !seen {
-            panic!("{:?}", Error::ExpectedValue);
+            Err(Error::ExpectedValue)?
         }
     }
     Ok(())
@@ -77,20 +77,9 @@ fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Resu
                     print(b",");
                 }
 
-                match token {
-                    Token::Quote => lex_string(lexer, print)?,
-                    _ => return Err(Error::ExpectedString),
-                }
-
-                if lexer.ws_token() != Some(Token::Colon) {
-                    return Err(Error::ExpectedColon);
-                }
+                lexer.str_colon(token, |lexer| lex_string(lexer, print).map_err(Error::Str))?;
                 print(b":");
-
-                match lexer.ws_token() {
-                    Some(token) => lex(token, lexer, print),
-                    _ => Err(Error::ExpectedValue),
-                }
+                lex(lexer.ws_token().ok_or(Error::ExpectedValue)?, lexer, print)
             })?;
             print(b"}}")
         }

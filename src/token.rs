@@ -5,7 +5,8 @@ pub enum Error {
     ExpectedItem,
     ExpectedItemOrEnd,
     ExpectedCommaOrEnd,
-    ExpectedToken,
+    ExpectedString,
+    ExpectedColon,
     ExpectedEof,
 }
 
@@ -16,7 +17,9 @@ impl core::fmt::Display for Error {
             ExpectedItem => "item expected".fmt(f),
             ExpectedItemOrEnd => "item or end of sequence expected".fmt(f),
             ExpectedCommaOrEnd => "comma or end of sequence expected".fmt(f),
-            _ => todo!(),
+            ExpectedString => "string expected".fmt(f),
+            ExpectedColon => "colon expected".fmt(f),
+            ExpectedEof => "end of file expected".fmt(f),
         }
     }
 }
@@ -128,6 +131,20 @@ pub trait Lex: crate::Read {
         token
     }
 
+    /// Parse a string with given function, followed by a colon.
+    fn str_colon<T, E: From<Error>, F>(&mut self, token: Token, f: F) -> Result<T, E>
+    where
+        F: FnOnce(&mut Self) -> Result<T, E>,
+    {
+        token.equals_or(Token::Quote, Error::ExpectedString)?;
+        let key = f(self)?;
+
+        let colon = self.ws_token().filter(|t| *t == Token::Colon);
+        colon.ok_or(Error::ExpectedColon)?;
+
+        Ok(key)
+    }
+
     /// Execute `f` for every item in the comma-separated sequence until `end`.
     fn seq<E: From<Error>, F>(&mut self, end: Token, mut f: F) -> Result<(), E>
     where
@@ -151,11 +168,12 @@ pub trait Lex: crate::Read {
         }
     }
 
+    /// Parse once using given function and assure that the function has consumed all tokens.
     fn exactly_one<T, E: From<Error>, F>(&mut self, f: F) -> Result<T, E>
     where
         F: FnOnce(Token, &mut Self) -> Result<T, E>,
     {
-        let token = self.ws_token().ok_or(Error::ExpectedToken)?;
+        let token = self.ws_token().ok_or(Error::ExpectedItem)?;
         let v = f(token, self)?;
         self.eat_whitespace();
         match self.peek_next() {

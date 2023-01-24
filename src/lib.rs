@@ -69,9 +69,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
 #[derive(Debug)]
 pub enum Error {
     ExpectedValue,
-    ExpectedString,
-    ExpectedColon,
-    ExpectedEof,
+    Depth,
     Num(num::Error),
     Str(str::Error),
     Seq(token::Error),
@@ -103,9 +101,7 @@ impl Display for Error {
         use Error::*;
         match self {
             ExpectedValue => "expected value".fmt(f),
-            ExpectedString => "expected string".fmt(f),
-            ExpectedColon => "expected colon".fmt(f),
-            ExpectedEof => "expected end of file".fmt(f),
+            Depth => "maximal depth exceeded".fmt(f),
             Num(num::Error::ExpectedDigit) => "expected digit".fmt(f),
             Str(e) => e.fmt(f),
             Seq(e) => e.fmt(f),

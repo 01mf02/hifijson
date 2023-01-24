@@ -76,7 +76,7 @@ impl Escape {
 impl fmt::Display for Escape {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.as_char() {
-            Ok(c) => write!(f, "\\{c}"),
+            Ok(c) => write!(f, "\\{}", c),
             Err(u) => write!(f, "\\u{:04x}", u),
         }
     }
@@ -107,7 +107,7 @@ impl core::fmt::Display for Error {
             Eof => "unterminated escape sequence".fmt(f),
             UnknownKind => "unknown escape sequence type".fmt(f),
             InvalidHex => "invalid hexadecimal sequence".fmt(f),
-            InvalidChar(c) => write!(f, "invalid character with index {c}"),
+            InvalidChar(c) => write!(f, "invalid character with index {}", c),
             ExpectedLowSurrogate => "expected low surrogate".fmt(f),
         }
     }

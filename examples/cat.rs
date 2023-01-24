@@ -16,13 +16,13 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
             for v in value::many(lexer) {
                 let v = v?;
                 if !cli.silent {
-                    println!("{v}")
+                    println!("{}", v)
                 };
             }
         } else {
             let v = lexer.exactly_one(value::from_token)?;
             if !cli.silent {
-                println!("{v}")
+                println!("{}", v)
             };
         }
     } else {

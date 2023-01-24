@@ -70,8 +70,8 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
             Array(a) => {
                 "[".fmt(f)?;
                 let mut iter = a.iter();
-                iter.next().iter().try_for_each(|v| write!(f, "{v}"))?;
-                iter.try_for_each(|v| write!(f, ",{v}"))?;
+                iter.next().iter().try_for_each(|v| write!(f, "{}", v))?;
+                iter.try_for_each(|v| write!(f, ",{}", v))?;
                 "]".fmt(f)
             }
             Object(o) => {
@@ -79,8 +79,8 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
                 let mut iter = o.iter().map(|(k, v)| (JsonString(&**k), v));
                 iter.next()
                     .iter()
-                    .try_for_each(|(k, v)| write!(f, "{k}:{v}"))?;
-                iter.try_for_each(|(k, v)| write!(f, ",{k}:{v}"))?;
+                    .try_for_each(|(k, v)| write!(f, "{}:{}", k, v))?;
+                iter.try_for_each(|(k, v)| write!(f, ",{}:{}", k, v))?;
                 "}".fmt(f)
             }
         }

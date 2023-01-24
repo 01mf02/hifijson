@@ -105,7 +105,7 @@ impl Display for Error {
             Num(num::Error::ExpectedDigit) => "expected digit".fmt(f),
             Str(e) => e.fmt(f),
             Seq(e) => e.fmt(f),
-            Token(t) => write!(f, "unexpected token: {t}"),
+            Token(t) => write!(f, "unexpected token: {}", t),
         }
     }
 }

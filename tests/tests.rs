@@ -16,11 +16,11 @@ fn int<Num, Str>(i: Num) -> Value<Num, Str> {
     num(i, None, None)
 }
 
-fn arr<const N: usize, Num, Str>(v: [Value<Num, Str>; N]) -> Value<Num, Str> {
+fn arr<Num, Str, const N: usize>(v: [Value<Num, Str>; N]) -> Value<Num, Str> {
     Value::Array(v.into())
 }
 
-fn obj<const N: usize, Num, Str>(v: [(Str, Value<Num, Str>); N]) -> Value<Num, Str> {
+fn obj<Num, Str, const N: usize>(v: [(Str, Value<Num, Str>); N]) -> Value<Num, Str> {
     Value::Object(v.into())
 }
 

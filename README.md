@@ -1,5 +1,8 @@
 # High-fidelity JSON lexer and parser
 
+![Build status](https://github.com/01mf02/hifijson/workflows/Rust/badge.svg)
+[![Rust 1.56+](https://img.shields.io/badge/rust-1.56+-orange.svg)](https://www.rust-lang.org)
+
 `hifijson` is a Rust crate that provides a high-fidelity JSON lexer and parser.
 In this context, high-fidelity means that unlike many other parsers,
 `hifijson` aims to preserve input data very faithfully, in particular numbers.

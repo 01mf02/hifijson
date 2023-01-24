@@ -109,9 +109,7 @@ pub fn from_token<L: LexAlloc>(
             let mut obj = Vec::new();
             lexer.seq(Token::RCurly, |token, lexer| {
                 let key = lexer.str_colon(token, |lexer| lexer.str_string().map_err(Error::Str))?;
-
-                let token = lexer.ws_token().ok_or(Error::ExpectedValue)?;
-                let value = from_token(token, lexer)?;
+                let value = from_token(lexer.ws_token().ok_or(Error::ExpectedValue)?, lexer)?;
                 obj.push((key, value));
                 Ok::<_, Error>(())
             })?;

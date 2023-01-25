@@ -17,3 +17,6 @@ alloc = []
 
 [dev-dependencies]
 memmap2 = "0.5.8"
+
+[dependencies]
+serde = { version = "1.0.152", optional = true }

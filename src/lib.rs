@@ -21,6 +21,8 @@ pub mod token;
 
 pub use token::Token;
 
+#[cfg(feature = "serde")]
+pub mod serde;
 pub mod validate;
 #[cfg(feature = "alloc")]
 pub mod value;

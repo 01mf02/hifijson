@@ -20,5 +20,7 @@ jobs:
       run: cargo build --verbose
     - name: Build without default features
       run: cargo build --no-default-features
+    - name: Build with Serde
+      run: cargo build --features serde
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --features serde --verbose

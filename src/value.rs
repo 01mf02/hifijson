@@ -42,23 +42,6 @@ impl<NumL: PartialEq<NumR>, NumR, StrL: PartialEq<StrR>, StrR> PartialEq<Value<N
     }
 }
 
-/// Wrapper type to facilitate string printing.
-struct JsonString<Str>(Str);
-
-impl<Str: Deref<Target = str>> fmt::Display for JsonString<Str> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        '"'.fmt(f)?;
-        for c in self.0.chars() {
-            match c {
-                '\\' | '"' | '\n' | '\r' | '\t' => c.escape_default().try_for_each(|c| c.fmt(f)),
-                c if (c as u32) < 20 => write!(f, "\\u{:04x}", c as u16),
-                c => c.fmt(f),
-            }?
-        }
-        '"'.fmt(f)
-    }
-}
-
 impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<Num, Str> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Value::*;
@@ -66,7 +49,7 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
             Null => "null".fmt(f),
             Bool(b) => b.fmt(f),
             Number((n, _)) => n.fmt(f),
-            String(s) => JsonString(&**s).fmt(f),
+            String(s) => str::Display::new(&**s).fmt(f),
             Array(a) => {
                 "[".fmt(f)?;
                 let mut iter = a.iter();
@@ -76,7 +59,7 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
             }
             Object(o) => {
                 "{".fmt(f)?;
-                let mut iter = o.iter().map(|(k, v)| (JsonString(&**k), v));
+                let mut iter = o.iter().map(|(k, v)| (str::Display::new(&**k), v));
                 iter.next()
                     .iter()
                     .try_for_each(|(k, v)| write!(f, "{}:{}", k, v))?;

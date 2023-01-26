@@ -1,13 +1,70 @@
 //! Strings.
+//!
+//! Converting JSON strings to Rust strings can require allocation, because
+//! escape sequences (such as `\n` or `\\`) in the JSON input
+//! have to be converted to Rust characters.
+//! For example,
+//! `\n` is mapped to the new line character, and
+//! `\\` is mapped to a single backslash.
+//!
+//! To provide flexibility, this module provides
+//! three different traits to parse JSON strings:
+//!
+//! * `Lex`: This is the most basic trait and allows only to
+//!   lex a string and discard its contents.
+//!   This can be useful if you know beforehand that
+//!   you do not care about the contents of the string,
+//!   because it is very fast and does not allocate memory.
+//! * `LexWrite`: This trait lexes a string,
+//!   but does not map escape sequences to the corresponding Rust characters.
+//!   This never allocates memory when lexing from slices,
+//!   but it always allocates memory when lexing from an iterator.
+//! * `LexAlloc`: This trait lexes a string,
+//!   mapping escape sequences to corresponding Rust characters.
+//!   Like `LexWrite`, this always allocates memory when lexing from an iterator,
+//!   but it allocates memory when lexing from a slice *only* if the input string contains at least one escape sequence.
+//!
+//! When in doubt, go for `LexAlloc`.
 
 use crate::escape::{self, Escape};
 use crate::{Read, Write};
+use core::fmt;
+use core::ops::Deref;
 
+/// Wrapper type to facilitate printing strings as JSON.
+pub struct Display<Str>(Str);
+
+impl<Str> Display<Str> {
+    /// Create a new string to be printed as JSON string.
+    pub fn new(s: Str) -> Self {
+        Self(s)
+    }
+}
+
+impl<Str: Deref<Target = str>> fmt::Display for Display<Str> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        '"'.fmt(f)?;
+        for c in self.0.chars() {
+            match c {
+                '\\' | '"' | '\n' | '\r' | '\t' => c.escape_default().try_for_each(|c| c.fmt(f)),
+                c if (c as u32) < 20 => write!(f, "\\u{:04x}", c as u16),
+                c => c.fmt(f),
+            }?
+        }
+        '"'.fmt(f)
+    }
+}
+
+/// String lexing error.
 #[derive(Debug)]
 pub enum Error {
+    /// ASCII control sequence (between 0 and 19) was found
     Control,
+    /// escape sequence (starting with `'\n'`) could not be decoded
     Escape(escape::Error),
+    /// string was not terminated
     Eof,
+    /// string is not in UTF-8
     Utf8(core::str::Utf8Error),
 }
 
@@ -23,19 +80,24 @@ impl core::fmt::Display for Error {
     }
 }
 
+/// String lexing state machine.
 #[derive(Default)]
 struct State {
-    // are we in an escape sequence, and if so,
-    // are we in a unicode escape sequence, and if so,
-    // at which position in the hex code are we?
+    /// Are we in an escape sequence, and if so,
+    /// are we in a unicode escape sequence, and if so,
+    /// at which position in the hex code are we?
     escape: Option<Option<u8>>,
-    // did we encounter an error so far?
+    /// Did we encounter an error so far?
     error: Option<Error>,
 }
 
 impl State {
+    /// Process the next character of a string,
+    /// return whether the string is finished or an error occurred.
     fn process(&mut self, c: u8) -> bool {
+        // are we in an escape sequence (started by '\')?
         if let Some(unicode) = &mut self.escape {
+            // are we in a Unicode escape sequence (started by "\u")?
             if let Some(hex_pos) = unicode {
                 if escape::decode_hex(c).is_none() {
                     self.error = Some(Error::Escape(escape::Error::InvalidHex));
@@ -45,6 +107,8 @@ impl State {
                     self.escape = None;
                 }
             } else {
+                // we are in a non-Unicode escape sequence,
+                // let us see which kind of sequence ...
                 match Escape::try_from(c) {
                     Some(Escape::Unicode(_)) => *unicode = Some(0),
                     Some(_) => self.escape = None,
@@ -52,6 +116,7 @@ impl State {
                 }
             }
         } else {
+            // we are not in any escape sequence
             match c {
                 b'"' => return true,
                 b'\\' => self.escape = Some(None),
@@ -62,6 +127,7 @@ impl State {
         self.error.is_some()
     }
 
+    /// Ensure that once `process` has returned `true`, the string has actually terminated.
     fn finish(self, mut next: impl FnMut() -> Option<u8>) -> Result<(), Error> {
         match self.error {
             Some(e) => Err(e),
@@ -71,6 +137,7 @@ impl State {
     }
 }
 
+/// String lexing that does never allocate.
 pub trait Lex: escape::Lex {
     /// Read a string without saving it.
     fn str_ignore(&mut self) -> Result<(), Error> {
@@ -82,6 +149,7 @@ pub trait Lex: escape::Lex {
 
 impl<T> Lex for T where T: escape::Lex {}
 
+/// String lexing that allocates only when lexing from iterators.
 pub trait LexWrite: escape::Lex + Read + Write {
     /// Read a string to bytes, copying escape sequences one-to-one.
     fn str_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<(), Error> {
@@ -98,7 +166,7 @@ pub trait LexWrite: escape::Lex + Read + Write {
         on_escape: impl Fn(&mut Self, Escape, &mut T) -> Result<(), E>,
     ) -> Result<T, E> {
         fn string_end(c: u8) -> bool {
-            matches!(c, b'"' | b'\\' | 0..=19)
+            matches!(c, b'\\' | b'"' | 0..=19)
         }
 
         let mut bytes = Self::Bytes::default();
@@ -107,7 +175,8 @@ pub trait LexWrite: escape::Lex + Read + Write {
         match self.take_next().ok_or(Error::Eof)? {
             b'\\' => (),
             b'"' => return Ok(out),
-            _ => return Err(Error::Control)?,
+            0..=19 => return Err(Error::Control)?,
+            _ => unreachable!(),
         }
         loop {
             let escape = self.escape().map_err(Error::Escape)?;
@@ -117,7 +186,8 @@ pub trait LexWrite: escape::Lex + Read + Write {
             match self.take_next().ok_or(Error::Eof)? {
                 b'\\' => continue,
                 b'"' => return Ok(out),
-                _ => return Err(Error::Control)?,
+                0..=19 => return Err(Error::Control)?,
+                _ => unreachable!(),
             }
         }
     }
@@ -125,9 +195,13 @@ pub trait LexWrite: escape::Lex + Read + Write {
 
 impl<T> LexWrite for T where T: Read + Write {}
 
+/// String lexing that always allocates when lexing from iterators and
+/// allocates when lexing from slices that contain escape sequences.
 pub trait LexAlloc: LexWrite {
-    type Str: core::ops::Deref<Target = str>;
+    /// The type of string that we are lexing into.
+    type Str: Deref<Target = str>;
 
+    /// Lex a JSON string to a Rust string.
     fn str_string(&mut self) -> Result<Self::Str, Error>;
 }
 

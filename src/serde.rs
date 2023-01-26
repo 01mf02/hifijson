@@ -1,20 +1,66 @@
-use crate::{token, Error, LexAlloc, SliceLexer, Token};
+use crate::{token, LexAlloc, SliceLexer, Token};
 
+use alloc::string::{String, ToString};
+use core::fmt;
 use serde::de::{self, DeserializeSeed, Visitor};
 use serde::Deserialize;
+
+#[derive(Debug)]
+pub enum Error {
+    Parse(crate::Error),
+    Custom(String),
+    Number(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Error::*;
+        match self {
+            Parse(e) => e.fmt(f),
+            Custom(e) => e.fmt(f),
+            Number(n) => write!(f, "number overflow: {}", n),
+        }
+    }
+}
+
+impl From<crate::Error> for Error {
+    fn from(e: crate::Error) -> Self {
+        Self::Parse(e)
+    }
+}
+
+impl From<token::Error> for Error {
+    fn from(e: token::Error) -> Self {
+        Self::Parse(crate::Error::Seq(e))
+    }
+}
+
+impl std::error::Error for Error {}
 
 type Result<T> = core::result::Result<T, Error>;
 
 impl de::Error for Error {
-    fn custom<T: core::fmt::Display>(_: T) -> Self {
-        // TODO: change this to a more descriptive type
-        Error::ExpectedValue
+    fn custom<T: core::fmt::Display>(e: T) -> Self {
+        Self::Custom(e.to_string())
     }
 }
 
 struct TokenLexer<L> {
     token: Token,
     lexer: L,
+}
+
+fn parse_number<T: core::str::FromStr>(n: &str) -> Result<T> {
+    n.parse().map_err(|_| Error::Number(n.to_string()))
+}
+
+macro_rules! deserialize_number {
+    ($deserialize:ident, $visit:ident) => {
+        fn $deserialize<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
+            let (n, _parts) = self.lexer.num_string().map_err(crate::Error::Num)?;
+            visitor.$visit(parse_number(&n)?)
+        }
+    };
 }
 
 impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L> {
@@ -24,36 +70,50 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
     where
         V: Visitor<'de>,
     {
-        use alloc::string::ToString;
+        use crate::Error::{Num, Str};
         match self.token {
             Token::Null => visitor.visit_unit(),
             Token::True => visitor.visit_bool(true),
             Token::False => visitor.visit_bool(false),
-            Token::Quote => visitor.visit_string(self.lexer.str_string()?.to_string()),
+            Token::Quote => visitor.visit_str(&self.lexer.str_string().map_err(Str)?),
             Token::DigitOrMinus => {
-                let (n, parts) = self.lexer.num_string()?;
-                // TODO: eliminate unwrap
+                let (n, parts) = self.lexer.num_string().map_err(Num)?;
                 if parts.dot.is_none() && parts.exp.is_none() {
                     if n.starts_with('-') {
-                        visitor.visit_i64(n.parse().unwrap())
+                        visitor.visit_i64(parse_number(&n)?)
                     } else {
-                        visitor.visit_u64(n.parse().unwrap())
+                        visitor.visit_u64(parse_number(&n)?)
                     }
                 } else {
-                    visitor.visit_f64(n.parse().unwrap())
+                    visitor.visit_f64(parse_number(&n)?)
                 }
             }
             Token::LSquare => visitor.visit_seq(CommaSeparated::new(self.lexer)),
             Token::LCurly => visitor.visit_map(CommaSeparated::new(self.lexer)),
-            token => Err(Error::Token(token)),
+            token => Err(crate::Error::Token(token))?,
         }
     }
 
     serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string
+        bool char str string
         bytes byte_buf option unit unit_struct newtype_struct seq tuple
         tuple_struct map struct enum identifier ignored_any
     }
+
+    deserialize_number!(deserialize_u8, visit_u8);
+    deserialize_number!(deserialize_u16, visit_u16);
+    deserialize_number!(deserialize_u32, visit_u32);
+    deserialize_number!(deserialize_u64, visit_u64);
+    deserialize_number!(deserialize_u128, visit_u128);
+
+    deserialize_number!(deserialize_i8, visit_i8);
+    deserialize_number!(deserialize_i16, visit_i16);
+    deserialize_number!(deserialize_i32, visit_i32);
+    deserialize_number!(deserialize_i64, visit_i64);
+    deserialize_number!(deserialize_i128, visit_i128);
+
+    deserialize_number!(deserialize_f32, visit_f32);
+    deserialize_number!(deserialize_f64, visit_f64);
 }
 
 struct CommaSeparated<'a, L> {
@@ -74,7 +134,7 @@ impl<'a, L: LexAlloc> CommaSeparated<'a, L> {
             if *token != Token::Comma {
                 Err(token::Error::ExpectedCommaOrEnd)?
             } else {
-                *token = self.lexer.ws_token().ok_or(Error::ExpectedValue)?;
+                *token = self.lexer.ws_token().ok_or(crate::Error::ExpectedValue)?;
             }
         }
         Ok(())
@@ -114,6 +174,10 @@ impl<'de, 'a, L: LexAlloc + 'de> de::MapAccess<'de> for CommaSeparated<'a, L> {
         };
         self.comma(&mut token)?;
 
+        if token != Token::Quote {
+            Err(token::Error::ExpectedString)?
+        }
+
         let lexer = &mut *self.lexer;
         seed.deserialize(TokenLexer { token, lexer }).map(Some)
     }
@@ -124,9 +188,9 @@ impl<'de, 'a, L: LexAlloc + 'de> de::MapAccess<'de> for CommaSeparated<'a, L> {
     {
         let lexer = &mut *self.lexer;
         let colon = lexer.ws_token().filter(|t| *t == Token::Colon);
-        colon.ok_or(Error::Seq(token::Error::ExpectedColon))?;
+        colon.ok_or(token::Error::ExpectedColon)?;
 
-        let token = lexer.ws_token().ok_or(Error::ExpectedValue)?;
+        let token = lexer.ws_token().ok_or(crate::Error::ExpectedValue)?;
         seed.deserialize(TokenLexer { token, lexer })
     }
 }

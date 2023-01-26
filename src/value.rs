@@ -1,6 +1,6 @@
 //! Parsing and values.
 
-use crate::{num, str, Error, LexAlloc, Token};
+use crate::{num, str, token, Error, LexAlloc, Token};
 use alloc::vec::Vec;
 use core::fmt;
 use core::ops::Deref;
@@ -70,6 +70,7 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
     }
 }
 
+/// Parse a value, using `f` to parse recursive values inside arrays / objects.
 fn parse<L: LexAlloc>(
     token: Token,
     lexer: &mut L,
@@ -93,16 +94,19 @@ fn parse<L: LexAlloc>(
             let mut obj = Vec::new();
             lexer.seq(Token::RCurly, |token, lexer| {
                 let key = lexer.str_colon(token, |lexer| lexer.str_string().map_err(Error::Str))?;
-                let value = f(lexer.ws_token().ok_or(Error::ExpectedValue)?, lexer)?;
+                let value = f(lexer.ws_token().ok_or(token::Expect::Value)?, lexer)?;
                 obj.push((key, value));
                 Ok::<_, Error>(())
             })?;
             obj
         })),
-        token => Err(Error::Token(token)),
+        _ => Err(token::Expect::Value)?,
     }
 }
 
+/// Parse a value, not limiting the recursion depth.
+///
+/// To prevent stack overflows, consider using [`parse_bounded`].
 pub fn parse_unbounded<L: LexAlloc>(
     token: Token,
     lexer: &mut L,
@@ -110,6 +114,9 @@ pub fn parse_unbounded<L: LexAlloc>(
     parse(token, lexer, parse_unbounded)
 }
 
+/// Parse an value, limiting the recursion to `depth`.
+///
+/// This serves to prevent stack overflows.
 pub fn parse_bounded<L: LexAlloc>(
     depth: usize,
     token: Token,
@@ -119,6 +126,7 @@ pub fn parse_bounded<L: LexAlloc>(
     parse(token, lexer, |token, lexer| parse_bounded(d, token, lexer))
 }
 
+/// Parse an arbitrary number of values.
 pub fn many<L: LexAlloc>(
     lexer: &mut L,
 ) -> impl Iterator<Item = Result<Value<L::Num, L::Str>, Error>> + '_ {

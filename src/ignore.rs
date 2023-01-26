@@ -1,5 +1,8 @@
-use crate::{Error, Lex, Token};
+//! Discarding values.
 
+use crate::{Error, Lex, Token, Expect};
+
+/// Parse and discard a value.
 pub fn parse<L: Lex>(token: Token, lexer: &mut L) -> Result<(), Error> {
     match token {
         Token::Null | Token::True | Token::False => Ok(()),
@@ -8,12 +11,13 @@ pub fn parse<L: Lex>(token: Token, lexer: &mut L) -> Result<(), Error> {
         Token::LSquare => lexer.seq(Token::RSquare, parse),
         Token::LCurly => lexer.seq(Token::RCurly, |token, lexer| {
             lexer.str_colon(token, |lexer| lexer.str_ignore().map_err(Error::Str))?;
-            parse(lexer.ws_token().ok_or(Error::ExpectedValue)?, lexer)
+            parse(lexer.ws_token().ok_or(Expect::Value)?, lexer)
         }),
-        token => Err(Error::Token(token)),
+        _ => Err(Expect::Value)?,
     }
 }
 
+/// Parse and discard an arbitrary number of values.
 pub fn many<L: Lex>(lexer: &mut L) -> Result<(), Error> {
     while let Some(token) = lexer.ws_token() {
         parse(token, lexer)?

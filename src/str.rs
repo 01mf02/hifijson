@@ -68,6 +68,8 @@ pub enum Error {
     Utf8(core::str::Utf8Error),
 }
 
+impl_from!(escape::Error, Error, Error::Escape);
+
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         use Error::*;
@@ -100,7 +102,7 @@ impl State {
             // are we in a Unicode escape sequence (started by "\u")?
             if let Some(hex_pos) = unicode {
                 if escape::decode_hex(c).is_none() {
-                    self.error = Some(Error::Escape(escape::Error::InvalidHex));
+                    self.error = Some(escape::Error::InvalidHex.into());
                 } else if *hex_pos < 3 {
                     *hex_pos += 1
                 } else {
@@ -112,7 +114,7 @@ impl State {
                 match Escape::try_from(c) {
                     Some(Escape::Unicode(_)) => *unicode = Some(0),
                     Some(_) => self.escape = None,
-                    None => self.error = Some(Error::Escape(escape::Error::UnknownKind)),
+                    None => self.error = Some(escape::Error::UnknownKind.into()),
                 }
             }
         } else {
@@ -222,8 +224,7 @@ impl<'a> LexAlloc for crate::SliceLexer<'a> {
         };
         use crate::escape::Lex;
         self.str_fold(Cow::Borrowed(""), on_string, |lexer, escape, out| {
-            out.to_mut()
-                .push(lexer.escape_char(escape).map_err(Error::Escape)?);
+            out.to_mut().push(lexer.escape_char(escape)?);
             Ok(())
         })
     }
@@ -251,7 +252,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> LexAlloc for crate::IterLexer<E, I> {
         };
         use crate::escape::Lex;
         self.str_fold(Self::Str::new(), on_string, |lexer, escape, out| {
-            out.push(lexer.escape_char(escape).map_err(Error::Escape)?);
+            out.push(lexer.escape_char(escape)?);
             Ok(())
         })
     }

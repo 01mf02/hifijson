@@ -2,6 +2,17 @@
 
 #![no_std]
 #![forbid(unsafe_code)]
+#![warn(missing_docs)]
+
+macro_rules! impl_from {
+    ($from:ty, $to:ty, $proj:expr) => {
+        impl From<$from> for $to {
+            fn from(x: $from) -> Self {
+                $proj(x)
+            }
+        }
+    };
+}
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -19,11 +30,11 @@ pub mod num;
 pub mod str;
 pub mod token;
 
-pub use token::Token;
+pub use token::{Token, Expect};
 
+pub mod ignore;
 #[cfg(feature = "serde")]
 pub mod serde;
-pub mod validate;
 #[cfg(feature = "alloc")]
 pub mod value;
 
@@ -45,6 +56,7 @@ pub struct SliceLexer<'a> {
 }
 
 impl<'a> SliceLexer<'a> {
+    /// Create a new slice lexer.
     pub fn new(slice: &'a [u8]) -> Self {
         Self { slice }
     }
@@ -54,10 +66,12 @@ impl<'a> SliceLexer<'a> {
 pub struct IterLexer<E, I> {
     bytes: I,
     last: Option<u8>,
+    /// error occurred during reading a byte
     pub error: Option<E>,
 }
 
 impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
+    /// Create a new iterator lexer.
     pub fn new(iter: I) -> Self {
         Self {
             bytes: iter,
@@ -70,31 +84,19 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
 /// Parse error.
 #[derive(Debug)]
 pub enum Error {
-    ExpectedValue,
+    /// maximal parsing depth has been exceeded
     Depth,
+    /// number lexing has failed
     Num(num::Error),
+    /// string lexing has failed
     Str(str::Error),
-    Seq(token::Error),
-    Token(Token),
+    /// we did not obtain a token that we expected
+    Token(token::Expect),
 }
 
-impl From<num::Error> for Error {
-    fn from(e: num::Error) -> Self {
-        Error::Num(e)
-    }
-}
-
-impl From<str::Error> for Error {
-    fn from(e: str::Error) -> Self {
-        Error::Str(e)
-    }
-}
-
-impl From<token::Error> for Error {
-    fn from(e: token::Error) -> Self {
-        Error::Seq(e)
-    }
-}
+impl_from!(num::Error, Error, Error::Num);
+impl_from!(str::Error, Error, Error::Str);
+impl_from!(token::Expect, Error, Error::Token);
 
 use core::fmt::{self, Display};
 
@@ -102,12 +104,10 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Error::*;
         match self {
-            ExpectedValue => "expected value".fmt(f),
             Depth => "maximal depth exceeded".fmt(f),
             Num(num::Error::ExpectedDigit) => "expected digit".fmt(f),
             Str(e) => e.fmt(f),
-            Seq(e) => e.fmt(f),
-            Token(t) => write!(f, "unexpected token: {}", t),
+            Token(e) => write!(f, "{} expected", e),
         }
     }
 }

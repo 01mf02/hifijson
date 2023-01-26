@@ -26,6 +26,7 @@ pub enum Escape {
 }
 
 impl Escape {
+    /// Try to interpret an ASCII character as first character of an escape sequence.
     pub fn try_from(c: u8) -> Option<Escape> {
         use Escape::*;
         Some(match c {
@@ -57,6 +58,7 @@ impl Escape {
         })
     }
 
+    /// Return escape sequence as UTF-16.
     pub fn as_u16(&self) -> u16 {
         use Escape::*;
         match self {

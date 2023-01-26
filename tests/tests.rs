@@ -1,6 +1,6 @@
 use core::num::NonZeroUsize;
 use hifijson::value::{self, Value};
-use hifijson::{validate, Error, IterLexer, SliceLexer};
+use hifijson::{ignore, Error, IterLexer, SliceLexer};
 
 fn bol<Num, Str>(b: bool) -> Value<Num, Str> {
     Value::Bool(b)
@@ -31,8 +31,8 @@ fn iter_of_slice(slice: &[u8]) -> impl Iterator<Item = Result<u8, ()>> + '_ {
 fn parses_to(slice: &[u8], v: Value<&str, &str>) -> Result<(), Error> {
     use hifijson::token::Lex;
 
-    SliceLexer::new(slice).exactly_one(validate::from_token)?;
-    IterLexer::new(iter_of_slice(slice)).exactly_one(validate::from_token)?;
+    SliceLexer::new(slice).exactly_one(ignore::parse)?;
+    IterLexer::new(iter_of_slice(slice)).exactly_one(ignore::parse)?;
 
     let parsed = SliceLexer::new(slice).exactly_one(value::parse_unbounded)?;
     assert_eq!(parsed, v);

@@ -1,29 +1,37 @@
 //! Tokens.
 
+/// What we expected to get, but did not get.
 #[derive(Debug)]
-pub enum Error {
-    ExpectedItem,
-    ExpectedItemOrEnd,
-    ExpectedCommaOrEnd,
-    ExpectedString,
-    ExpectedColon,
-    ExpectedEof,
+pub enum Expect {
+    /// `   ` or `]` or `,`
+    Value,
+    /// `[` or `{`
+    ValueOrEnd,
+    /// `[1` or `[1 2`
+    CommaOrEnd,
+    /// `{0: 1}`
+    String,
+    /// `{"a" 1}`
+    Colon,
+    /// `true false` (when parsing exactly one value)
+    Eof,
 }
 
-impl core::fmt::Display for Error {
+impl core::fmt::Display for Expect {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        use Error::*;
+        use Expect::*;
         match self {
-            ExpectedItem => "item expected".fmt(f),
-            ExpectedItemOrEnd => "item or end of sequence expected".fmt(f),
-            ExpectedCommaOrEnd => "comma or end of sequence expected".fmt(f),
-            ExpectedString => "string expected".fmt(f),
-            ExpectedColon => "colon expected".fmt(f),
-            ExpectedEof => "end of file expected".fmt(f),
+            Value => "value".fmt(f),
+            ValueOrEnd => "value or end of sequence".fmt(f),
+            CommaOrEnd => "comma or end of sequence".fmt(f),
+            String => "string".fmt(f),
+            Colon => "colon".fmt(f),
+            Eof => "end of file".fmt(f),
         }
     }
 }
 
+/// JSON lexer token.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
     /// `null`
@@ -83,6 +91,7 @@ impl Token {
     }
 }
 
+/// Lexing that does not require allocation.
 pub trait Lex: crate::Read {
     /// Skip input until the earliest non-whitespace character.
     fn eat_whitespace(&mut self) {
@@ -95,6 +104,7 @@ pub trait Lex: crate::Read {
         Some(self.token(*self.peek_next()?))
     }
 
+    /// Return `out` if the input matches `s`, otherwise return an error.
     fn exact<const N: usize>(&mut self, s: [u8; N], out: Token) -> Token {
         // we are calling this function without having advanced before
         self.take_next();
@@ -132,53 +142,53 @@ pub trait Lex: crate::Read {
     }
 
     /// Parse a string with given function, followed by a colon.
-    fn str_colon<T, E: From<Error>, F>(&mut self, token: Token, f: F) -> Result<T, E>
+    fn str_colon<T, E: From<Expect>, F>(&mut self, token: Token, f: F) -> Result<T, E>
     where
         F: FnOnce(&mut Self) -> Result<T, E>,
     {
-        token.equals_or(Token::Quote, Error::ExpectedString)?;
+        token.equals_or(Token::Quote, Expect::String)?;
         let key = f(self)?;
 
         let colon = self.ws_token().filter(|t| *t == Token::Colon);
-        colon.ok_or(Error::ExpectedColon)?;
+        colon.ok_or(Expect::Colon)?;
 
         Ok(key)
     }
 
     /// Execute `f` for every item in the comma-separated sequence until `end`.
-    fn seq<E: From<Error>, F>(&mut self, end: Token, mut f: F) -> Result<(), E>
+    fn seq<E: From<Expect>, F>(&mut self, end: Token, mut f: F) -> Result<(), E>
     where
         F: FnMut(Token, &mut Self) -> Result<(), E>,
     {
-        let mut token = self.ws_token().ok_or(Error::ExpectedItemOrEnd)?;
+        let mut token = self.ws_token().ok_or(Expect::ValueOrEnd)?;
         if token == end {
             return Ok(());
         };
 
         loop {
             f(token, self)?;
-            token = self.ws_token().ok_or(Error::ExpectedCommaOrEnd)?;
+            token = self.ws_token().ok_or(Expect::CommaOrEnd)?;
             if token == end {
                 return Ok(());
             } else if token == Token::Comma {
-                token = self.ws_token().ok_or(Error::ExpectedItem)?;
+                token = self.ws_token().ok_or(Expect::Value)?;
             } else {
-                return Err(Error::ExpectedCommaOrEnd)?;
+                return Err(Expect::CommaOrEnd)?;
             }
         }
     }
 
     /// Parse once using given function and assure that the function has consumed all tokens.
-    fn exactly_one<T, E: From<Error>, F>(&mut self, f: F) -> Result<T, E>
+    fn exactly_one<T, E: From<Expect>, F>(&mut self, f: F) -> Result<T, E>
     where
         F: FnOnce(Token, &mut Self) -> Result<T, E>,
     {
-        let token = self.ws_token().ok_or(Error::ExpectedItem)?;
+        let token = self.ws_token().ok_or(Expect::Value)?;
         let v = f(token, self)?;
         self.eat_whitespace();
         match self.peek_next() {
             None => Ok(v),
-            Some(_) => Err(Error::ExpectedEof)?,
+            Some(_) => Err(Expect::Eof)?,
         }
     }
 }

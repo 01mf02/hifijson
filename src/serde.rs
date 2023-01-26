@@ -1,4 +1,4 @@
-use crate::{token, LexAlloc, SliceLexer, Token};
+use crate::{LexAlloc, SliceLexer, Token, Expect};
 
 use alloc::string::{String, ToString};
 use core::fmt;
@@ -23,17 +23,8 @@ impl fmt::Display for Error {
     }
 }
 
-impl From<crate::Error> for Error {
-    fn from(e: crate::Error) -> Self {
-        Self::Parse(e)
-    }
-}
-
-impl From<token::Error> for Error {
-    fn from(e: token::Error) -> Self {
-        Self::Parse(crate::Error::Seq(e))
-    }
-}
+impl_from!(crate::Error, Error, Error::Parse);
+impl_from!(Expect, Error, |e| Error::Parse(crate::Error::Token(e)));
 
 impl std::error::Error for Error {}
 
@@ -90,7 +81,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
             }
             Token::LSquare => visitor.visit_seq(CommaSeparated::new(self.lexer)),
             Token::LCurly => visitor.visit_map(CommaSeparated::new(self.lexer)),
-            token => Err(crate::Error::Token(token))?,
+            _ => Err(Expect::Value)?,
         }
     }
 
@@ -132,9 +123,9 @@ impl<'a, L: LexAlloc> CommaSeparated<'a, L> {
     fn comma(&mut self, token: &mut Token) -> Result<()> {
         if !core::mem::take(&mut self.first) {
             if *token != Token::Comma {
-                Err(token::Error::ExpectedCommaOrEnd)?
+                Err(Expect::CommaOrEnd)?
             } else {
-                *token = self.lexer.ws_token().ok_or(crate::Error::ExpectedValue)?;
+                *token = self.lexer.ws_token().ok_or(Expect::Value)?;
             }
         }
         Ok(())
@@ -149,7 +140,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::SeqAccess<'de> for CommaSeparated<'a, L> {
         T: DeserializeSeed<'de>,
     {
         let token = self.lexer.ws_token();
-        let mut token = token.ok_or(token::Error::ExpectedItemOrEnd)?;
+        let mut token = token.ok_or(Expect::ValueOrEnd)?;
         if token == Token::RSquare {
             return Ok(None);
         };
@@ -168,14 +159,14 @@ impl<'de, 'a, L: LexAlloc + 'de> de::MapAccess<'de> for CommaSeparated<'a, L> {
         K: DeserializeSeed<'de>,
     {
         let token = self.lexer.ws_token();
-        let mut token = token.ok_or(token::Error::ExpectedItemOrEnd)?;
+        let mut token = token.ok_or(Expect::ValueOrEnd)?;
         if token == Token::RCurly {
             return Ok(None);
         };
         self.comma(&mut token)?;
 
         if token != Token::Quote {
-            Err(token::Error::ExpectedString)?
+            Err(Expect::String)?
         }
 
         let lexer = &mut *self.lexer;
@@ -188,9 +179,9 @@ impl<'de, 'a, L: LexAlloc + 'de> de::MapAccess<'de> for CommaSeparated<'a, L> {
     {
         let lexer = &mut *self.lexer;
         let colon = lexer.ws_token().filter(|t| *t == Token::Colon);
-        colon.ok_or(token::Error::ExpectedColon)?;
+        colon.ok_or(Expect::Colon)?;
 
-        let token = lexer.ws_token().ok_or(crate::Error::ExpectedValue)?;
+        let token = lexer.ws_token().ok_or(Expect::Value)?;
         seed.deserialize(TokenLexer { token, lexer })
     }
 }

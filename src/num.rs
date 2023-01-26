@@ -21,6 +21,7 @@ pub struct Parts {
 }
 
 pub trait Lex: Read {
+    /// Perform `f` for every digit read.
     fn digits_foreach(&mut self, mut f: impl FnMut(u8)) {
         while let Some(digit @ (b'0'..=b'9')) = self.peek_next() {
             f(*digit);
@@ -28,15 +29,14 @@ pub trait Lex: Read {
         }
     }
 
-    fn digits1_ignore(&mut self) -> Result<usize, Error> {
+    /// Return number of digits read and fail if no digit was encountered.
+    fn digits1_ignore(&mut self) -> Result<NonZeroUsize, Error> {
         let mut len = 0;
         self.digits_foreach(|_| len += 1);
-        if len == 0 {
-            return Err(Error::ExpectedDigit);
-        }
-        Ok(len)
+        NonZeroUsize::new(len).ok_or(Error::ExpectedDigit)
     }
 
+    /// Lex a number and ignore its contents, saving only its parts.
     fn num_ignore(&mut self) -> Result<Parts, Error> {
         let mut pos = 0;
         let mut parts = Parts::default();
@@ -64,7 +64,7 @@ pub trait Lex: Read {
                 Some(b'.') if parts.dot.is_none() && parts.exp.is_none() => {
                     parts.dot = Some(NonZeroUsize::new(pos).unwrap());
                     self.read_next();
-                    pos += 1 + self.digits1_ignore()?;
+                    pos += 1 + self.digits1_ignore()?.get();
                 }
 
                 Some(b'e' | b'E') if parts.exp.is_none() => {
@@ -76,7 +76,7 @@ pub trait Lex: Read {
                         pos += 1;
                     }
 
-                    pos += 1 + self.digits1_ignore()?;
+                    pos += 1 + self.digits1_ignore()?.get();
                 }
                 _ => return Ok(parts),
             }
@@ -87,9 +87,12 @@ pub trait Lex: Read {
 impl<T> Lex for T where T: Read {}
 
 pub trait LexWrite: Lex + Write {
+    /// String type to save numbers as.
     type Num: core::ops::Deref<Target = str>;
 
+    /// Write a number to bytes and save its parts.
     fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<Parts, Error>;
+    /// Read a number to a string and save its parts.
     fn num_string(&mut self) -> Result<(Self::Num, Parts), Error>;
 }
 

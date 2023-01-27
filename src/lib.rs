@@ -82,7 +82,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> IterLexer<E, I> {
 }
 
 /// Parse error.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// maximal parsing depth has been exceeded
     Depth,

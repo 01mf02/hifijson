@@ -1,7 +1,7 @@
 //! Tokens.
 
 /// What we expected to get, but did not get.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Expect {
     /// `   ` or `]` or `,`
     Value,

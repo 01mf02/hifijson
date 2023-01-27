@@ -94,7 +94,7 @@ pub(crate) fn decode_hex(val: u8) -> Option<u8> {
 }
 
 /// Escape sequence lexing error.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// `\x` or `\U`
     UnknownKind,

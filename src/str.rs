@@ -56,7 +56,7 @@ impl<Str: Deref<Target = str>> fmt::Display for Display<Str> {
 }
 
 /// String lexing error.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// ASCII control sequence (between 0 and 19) was found
     Control,
@@ -133,7 +133,8 @@ impl State {
     fn finish(self, mut next: impl FnMut() -> Option<u8>) -> Result<(), Error> {
         match self.error {
             Some(e) => Err(e),
-            None if self.escape.is_some() || next() != Some(b'"') => Err(Error::Eof),
+            None if self.escape.is_some() => Err(escape::Error::Eof)?,
+            None if next() != Some(b'"') => Err(Error::Eof),
             None => Ok(()),
         }
     }

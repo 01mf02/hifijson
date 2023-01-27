@@ -4,7 +4,7 @@ use crate::{Read, Write};
 use core::num::NonZeroUsize;
 
 /// Number lexing error.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// The only thing that can go wrong during number lexing is
     /// that we are not reading even a single digit.

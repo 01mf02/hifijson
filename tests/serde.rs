@@ -1,6 +1,10 @@
 #![cfg(feature = "serde")]
 
-use hifijson::serde::from_slice;
+use serde::Deserialize;
+
+pub fn from_slice<'a, T: Deserialize<'a>>(s: &'a [u8]) -> Result<T, hifijson::serde::Error> {
+    hifijson::serde::exactly_one(&mut hifijson::SliceLexer::new(s))
+}
 
 #[test]
 fn basic() {

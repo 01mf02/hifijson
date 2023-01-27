@@ -3,8 +3,15 @@
 use crate::{Read, Write};
 use core::num::NonZeroUsize;
 
+/// Number lexing error.
 #[derive(Debug)]
 pub enum Error {
+    /// The only thing that can go wrong during number lexing is
+    /// that we are not reading even a single digit.
+    /// Once a single digit has been read,
+    /// unexpected sequences afterwards are ignored by this lexer.
+    /// For example, if the lexer encounters `42abc`,
+    /// it returns only `42` and does not touch `abc`.
     ExpectedDigit,
 }
 
@@ -20,6 +27,7 @@ pub struct Parts {
     pub exp: Option<NonZeroUsize>,
 }
 
+/// Number lexing, ignoring the number.
 pub trait Lex: Read {
     /// Perform `f` for every digit read.
     fn digits_foreach(&mut self, mut f: impl FnMut(u8)) {
@@ -86,6 +94,7 @@ pub trait Lex: Read {
 
 impl<T> Lex for T where T: Read {}
 
+/// Number lexing, keeping the number.
 pub trait LexWrite: Lex + Write {
     /// String type to save numbers as.
     type Num: core::ops::Deref<Target = str>;

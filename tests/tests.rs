@@ -72,6 +72,13 @@ fn numbers() -> Result<(), Error> {
 fn strings() -> Result<(), Error> {
     // greetings to Japan
     parses_to(r#""Hello 日本""#.as_bytes(), Value::String("Hello 日本"))?;
+    // single-character escape sequences
+    parses_to(
+        br#""\"\\\/\b\f\n\r\t""#,
+        Value::String("\"\\/\u{8}\u{c}\n\r\t"),
+    )?;
+    // UTF-16 surrogate pairs
+    parses_to(br#""\uD801\uDC37""#, Value::String("𐐷"))?;
     Ok(())
 }
 

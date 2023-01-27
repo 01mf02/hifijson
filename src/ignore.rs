@@ -1,6 +1,6 @@
 //! Discarding values.
 
-use crate::{Error, Lex, Token, Expect};
+use crate::{Error, Expect, Lex, Token};
 
 /// Parse and discard a value.
 pub fn parse<L: Lex>(token: Token, lexer: &mut L) -> Result<(), Error> {

@@ -1,14 +1,20 @@
-use crate::{LexAlloc, SliceLexer, Token, Expect};
+//! Deserialisation via serde.
+
+use crate::{Expect, LexAlloc, Token};
 
 use alloc::string::{String, ToString};
 use core::fmt;
 use serde::de::{self, DeserializeSeed, Visitor};
 use serde::Deserialize;
 
+/// Deserialisation error.
 #[derive(Debug)]
 pub enum Error {
+    /// parse error
     Parse(crate::Error),
+    /// error produced by serde
     Custom(String),
+    /// `2e1000` (we were not able to fit a number into its type)
     Number(String),
 }
 
@@ -186,7 +192,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::MapAccess<'de> for CommaSeparated<'a, L> {
     }
 }
 
-pub fn from_slice<'a, T: Deserialize<'a>>(s: &'a [u8]) -> Result<T> {
-    use crate::token::Lex;
-    SliceLexer::new(s).exactly_one(|token, lexer| T::deserialize(TokenLexer { token, lexer }))
+/// Deserialise a single value.
+pub fn exactly_one<'a, T: Deserialize<'a>, L: LexAlloc + 'a>(lexer: &mut L) -> Result<T> {
+    lexer.exactly_one(|token, lexer| T::deserialize(TokenLexer { token, lexer }))
 }

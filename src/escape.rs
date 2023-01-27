@@ -93,28 +93,37 @@ pub(crate) fn decode_hex(val: u8) -> Option<u8> {
     }
 }
 
+/// Escape sequence lexing error.
 #[derive(Debug)]
 pub enum Error {
-    Eof,
+    /// `\x` or `\U`
     UnknownKind,
+    /// `\u000X`
     InvalidHex,
+    /// `\uDC37`
     InvalidChar(u32),
+    /// `\uD801`
     ExpectedLowSurrogate,
+    /// `\` or `\u00`
+    Eof,
 }
 
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         use Error::*;
         match self {
-            Eof => "unterminated escape sequence".fmt(f),
             UnknownKind => "unknown escape sequence type".fmt(f),
             InvalidHex => "invalid hexadecimal sequence".fmt(f),
             InvalidChar(c) => write!(f, "invalid character with index {}", c),
             ExpectedLowSurrogate => "expected low surrogate".fmt(f),
+            Eof => "unterminated escape sequence".fmt(f),
         }
     }
 }
 
+/// Escape sequence lexing.
+///
+/// This does not require any allocation.
 pub trait Lex: Read {
     /// Convert a read escape sequence to a char, potentially reading more.
     fn escape_char(&mut self, escape: Escape) -> Result<char, Error> {

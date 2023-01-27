@@ -30,7 +30,7 @@ pub mod num;
 pub mod str;
 pub mod token;
 
-pub use token::{Token, Expect};
+pub use token::{Expect, Token};
 
 pub mod ignore;
 #[cfg(feature = "serde")]

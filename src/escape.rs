@@ -133,7 +133,7 @@ pub trait Lex: Read {
                     return Err(Error::ExpectedLowSurrogate);
                 }
                 if let Escape::Unicode(low @ (0xDC00..=0xDFFF)) = self.escape()? {
-                    ((high - 0xD800) * 0x400 + (low - 0xDC00)) as u32 + 0x10000
+                    ((high - 0xD800) as u32 * 0x400 + (low - 0xDC00) as u32) + 0x10000
                 } else {
                     return Err(Error::ExpectedLowSurrogate);
                 }

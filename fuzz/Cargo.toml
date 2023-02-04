@@ -21,13 +21,7 @@ members = ["."]
 debug = 1
 
 [[bin]]
-name = "slice-value"
-path = "fuzz_targets/slice_value.rs"
-test = false
-doc = false
-
-[[bin]]
-name = "iter-value"
-path = "fuzz_targets/iter_value.rs"
+name = "all"
+path = "fuzz_targets/all.rs"
 test = false
 doc = false

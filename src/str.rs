@@ -68,6 +68,22 @@ pub enum Error {
     Utf8(core::str::Utf8Error),
 }
 
+impl Error {
+    /// True if the string is not in UTF-8 or an UTF-16 escape sequence is invalid.
+    ///
+    /// These errors do never occur when parsing strings via
+    /// [`Lex::str_ignore`] or [`LexWrite::str_bytes`].
+    /// However, they can occur when parsing strings via
+    /// [`LexAlloc::str_string`].
+    pub fn is_unicode_error(&self) -> bool {
+        use escape::Error::*;
+        matches!(
+            self,
+            Self::Utf8(_) | Self::Escape(InvalidChar(_) | ExpectedLowSurrogate)
+        )
+    }
+}
+
 impl_from!(escape::Error, Error, Error::Escape);
 
 impl core::fmt::Display for Error {

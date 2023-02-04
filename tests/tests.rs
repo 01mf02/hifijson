@@ -104,8 +104,13 @@ fn strings() -> Result<(), Error> {
         br#""\"\\\/\b\f\n\r\t""#,
         Value::String("\"\\/\u{8}\u{c}\n\r\t"),
     )?;
+
     // UTF-16 surrogate pairs
     parses_to(br#""\uD801\uDC37""#, Value::String("𐐷"))?;
+    // the smallest value representable with a surrogate pair
+    parses_to(br#""\ud800\udc00""#, Value::String("𐀀"))?;
+    // the  largest value representable with a surrogate pair
+    parses_to(br#""\udbff\udfff""#, Value::String("􏿿"))?;
 
     let escape = |e| Error::Str(str::Error::Escape(e));
 

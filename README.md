@@ -67,10 +67,39 @@ arbitrary-precision numbers,
 reading from byte iterators, nor
 escape sequences in strings.
 
+### Performance
+
+[`cargo run --release --example bench`](examples/bench.rs) measures
+the time (in milliseconds) that `serde_json` and `hifijson` take to
+parse large JSON data to their respective `Value` types.
+For better comparability, I enabled `serde_json`'s `arbitrary_precision` flag,
+which parses numbers to strings like `hifijson`.
+Still, this is somewhat of an apples-to-oranges comparison because
+a `serde_json` `Value` uses `String` for numbers and strings where
+a   `hifijson` `Value` uses `&str` for numbers and `Cow<str>` for strings.
+This gives `hifijson` an advantage for the "pi" and "hello" benchmarks,
+but a disadvantage for the "hello-world" benchmark.
+
+| Benchmark   | `serde_json` | `hifijson` |
+| ----------- | -----------: | ---------: |
+| null        |          550 |        736 |
+| pi          |         2476 |       1383 |
+| hello       |         1755 |       1335 |
+| hello-world |         1764 |       2891 |
+| arr         |          968 |       1040 |
+| tree        |         2182 |       2762 |
+
+The results are mixed: While `hifijson`
+is faster on numbers and strings not containing escape sequences, it
+is slower on keywords (`null`, `true`, `false`) and deeply nested arrays.
+Also note that `serde_json` parses numbers much faster without `arbitrary_precision`.
+
+Suggestions on how to improve `hifijson`'s performance are welcome. :)
+
 
 ## Lexer
 
-Writing a JSON parser is remarkably easy --- the hard part is actually lexing.
+Writing a JSON *parser* is remarkably easy --- the hard part is actually lexing.
 This is why `hifijson` provides you first and foremost with a lexer,
 which you can then use to build a parser yourself.
 Yes, you. You can do it.

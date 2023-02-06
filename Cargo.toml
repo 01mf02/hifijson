@@ -15,8 +15,9 @@ default = ["std", "alloc"]
 std = []
 alloc = []
 
-[dev-dependencies]
-memmap2 = "0.5.8"
-
 [dependencies]
 serde = { version = "1.0.152", optional = true }
+
+[dev-dependencies]
+memmap2 = "0.5.8"
+serde_json = { version = "1.0.92", features = ["arbitrary_precision"] }

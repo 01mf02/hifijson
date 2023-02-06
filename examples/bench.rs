@@ -28,8 +28,8 @@ fn main() {
     binary(23, &mut tree);
 
     const N: usize = 10_000_000;
-    println!("Benchmark | `serde_json` | `hifijson`");
-    println!("- | -: | -:");
+    println!("Benchmark | Size | `serde_json` | `hifijson`");
+    println!("- | -: | -: | -:");
     for (name, json) in [
         ("null", many("null", N)),
         ("pi", many("3.1415", N)),
@@ -39,12 +39,13 @@ fn main() {
         ("tree", tree),
     ] {
         print!("{name}");
+        print!(" | {} MiB", json.len() / 1024 / 1024);
         let now = Instant::now();
         serde(json.as_bytes());
-        print!(" | {}", now.elapsed().as_millis());
+        print!(" | {} ms", now.elapsed().as_millis());
         let now = Instant::now();
         hifi(json.as_bytes());
-        print!(" | {}", now.elapsed().as_millis());
+        print!(" | {} ms", now.elapsed().as_millis());
         println!();
     }
 }

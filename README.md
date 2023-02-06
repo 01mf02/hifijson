@@ -69,8 +69,8 @@ escape sequences in strings.
 
 ### Performance
 
-[`cargo run --release --example bench`](examples/bench.rs) measures
-the time (in milliseconds) that `serde_json` and `hifijson` take to
+[`cargo run --release --example bench`](examples/bench.rs)
+measures the time that `serde_json` and `hifijson` take to
 parse large JSON data to their respective `Value` types.
 For better comparability, I enabled `serde_json`'s `arbitrary_precision` flag,
 which parses numbers to strings like `hifijson`.
@@ -80,14 +80,14 @@ a   `hifijson` `Value` uses `&str` for numbers and `Cow<str>` for strings.
 This gives `hifijson` an advantage for the "pi" and "hello" benchmarks,
 but a disadvantage for the "hello-world" benchmark.
 
-| Benchmark   | `serde_json` | `hifijson` |
-| ----------- | -----------: | ---------: |
-| null        |          550 |        736 |
-| pi          |         2476 |       1383 |
-| hello       |         1755 |       1335 |
-| hello-world |         1764 |       2891 |
-| arr         |          968 |       1040 |
-| tree        |         2182 |       2762 |
+| Benchmark   |    Size | `serde_json` | `hifijson` |
+| ----------- | ------: | -----------: | ---------: |
+| null        |  47 MiB |       549 ms |     736 ms |
+| pi          |  66 MiB |      2484 ms |    1383 ms |
+| hello       |  76 MiB |      1762 ms |    1334 ms |
+| hello-world | 143 MiB |      1786 ms |    2933 ms |
+| arr         |  28 MiB |       970 ms |    1056 ms |
+| tree        |  39 MiB |      2221 ms |    2822 ms |
 
 The results are mixed: While `hifijson`
 is faster on numbers and strings not containing escape sequences, it

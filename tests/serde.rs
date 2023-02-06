@@ -31,6 +31,8 @@ fn arrays() {
     assert_eq!(Vec::<()>::new(), from_slice::<Vec<_>>(b"[]").unwrap());
     assert_eq!(vec![0], from_slice::<Vec<_>>(b"[0]").unwrap());
     assert_eq!(vec![0, 1], from_slice::<Vec<_>>(b"[0, 1]").unwrap());
+    assert_eq!(vec![0, -1], from_slice::<Vec<_>>(b"[0, -1]").unwrap());
+    assert_eq!(vec![0.0, 1.0], from_slice::<Vec<_>>(b"[0, 1]").unwrap());
 }
 
 #[test]

@@ -125,10 +125,3 @@ pub fn parse_bounded<L: LexAlloc>(
     let d = depth.checked_sub(1).ok_or(Error::Depth)?;
     parse(token, lexer, |token, lexer| parse_bounded(d, token, lexer))
 }
-
-/// Parse an arbitrary number of values.
-pub fn many<L: LexAlloc>(
-    lexer: &mut L,
-) -> impl Iterator<Item = Result<Value<L::Num, L::Str>, Error>> + '_ {
-    core::iter::from_fn(|| Some(parse_unbounded(lexer.ws_token()?, lexer)))
-}

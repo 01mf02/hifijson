@@ -16,11 +16,3 @@ pub fn parse<L: Lex>(token: Token, lexer: &mut L) -> Result<(), Error> {
         _ => Err(Expect::Value)?,
     }
 }
-
-/// Parse and discard an arbitrary number of values.
-pub fn many<L: Lex>(lexer: &mut L) -> Result<(), Error> {
-    while let Some(token) = lexer.ws_token() {
-        parse(token, lexer)?
-    }
-    Ok(())
-}

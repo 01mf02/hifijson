@@ -13,7 +13,8 @@ struct Cli {
 fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
     if cli.parse {
         if cli.many {
-            for v in value::many(lexer) {
+            let vs = core::iter::from_fn(|| Some(value::parse_unbounded(lexer.ws_token()?, lexer)));
+            for v in vs {
                 let v = v?;
                 if !cli.silent {
                     println!("{}", v)

@@ -7,9 +7,9 @@
 In this context, high-fidelity means that unlike many other parsers,
 `hifijson` aims to preserve input data very faithfully, in particular numbers.
 
-* No dependencies
-* `no_std`, `alloc` optional
-* Support for both reading from slices and from byte iterators:
+* Zero dependencies: Not even `alloc` is obligatory!
+* `no_std`: Can be used on embedded systems without standard library.
+* Reading from slices and from byte iterators:
   This is important if you are writing an application that should
   read from files as well as from standard input, for example.
 * Performance
@@ -18,6 +18,7 @@ In this context, high-fidelity means that unlike many other parsers,
   Due to the presence of escaped characters in JSON strings,
   full zero-copy deserialisation of JSON data is not possible.
   However, `hifijson` attempts to minimise allocations in presence of strings.
+* Deserialisation via `serde`
 
 
 ## Comparison to `serde_json`

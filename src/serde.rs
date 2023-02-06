@@ -1,6 +1,15 @@
 //! Deserialisation via serde.
+//!
+//! Example usage:
+//!
+//! ~~~
+//! let input = b"[0, 1]";
+//! let mut lexer = hifijson::SliceLexer::new(input);
+//! let value: Vec<_> = hifijson::serde::exactly_one(&mut lexer).unwrap();
+//! assert_eq!(vec![0, 1], value);
+//! ~~~
 
-use crate::{Expect, LexAlloc, Token};
+use crate::{Expect, Lex, LexAlloc, Token};
 
 use alloc::string::{String, ToString};
 use core::fmt;
@@ -124,7 +133,7 @@ impl<'a, L> CommaSeparated<'a, L> {
     }
 }
 
-impl<'a, L: LexAlloc> CommaSeparated<'a, L> {
+impl<'a, L: Lex> CommaSeparated<'a, L> {
     // Comma is required before every element except the first.
     fn comma(&mut self, token: &mut Token) -> Result<()> {
         if !core::mem::take(&mut self.first) {

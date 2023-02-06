@@ -32,3 +32,14 @@ fn arrays() {
     assert_eq!(vec![0], from_slice::<Vec<_>>(b"[0]").unwrap());
     assert_eq!(vec![0, 1], from_slice::<Vec<_>>(b"[0, 1]").unwrap());
 }
+
+#[test]
+fn objects() {
+    use std::collections::HashMap;
+    let a = HashMap::from([("a".to_string(), 1)]);
+    let b = HashMap::from([("a".to_string(), 1), ("b".to_string(), 2)]);
+
+    assert_eq!(HashMap::<String, ()>::new(), from_slice(b"{}").unwrap());
+    assert_eq!(a, from_slice(br#"{"a": 1}"#).unwrap());
+    assert_eq!(b, from_slice(br#"{"a": 1, "b": 2}"#).unwrap());
+}

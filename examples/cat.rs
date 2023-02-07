@@ -1,5 +1,6 @@
 //! JSON validator & pretty-printer.
 
+use core::ops::Deref;
 use hifijson::{str, value, Error, Expect, IterLexer, LexAlloc, LexWrite, SliceLexer, Token};
 use std::{fs, io};
 
@@ -8,6 +9,37 @@ struct Cli {
     parse: bool,
     many: bool,
     silent: bool,
+    path: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct PathElem {
+    ints: Vec<usize>,
+    strs: Vec<String>,
+}
+
+impl<Num: Deref<Target = str>, Str: Deref<Target = str>> TryFrom<value::Value<Num, Str>>
+    for PathElem
+{
+    type Error = ();
+
+    fn try_from(v: value::Value<Num, Str>) -> Result<Self, Self::Error> {
+        let mut elem = Self::default();
+        use value::Value::*;
+        match v {
+            Array(arr) => {
+                for x in arr {
+                    match x {
+                        Number((n, parts)) if parts.is_int() => elem.ints.push(n.parse().unwrap()),
+                        String(s) => elem.strs.push(s.to_string()),
+                        _ => todo!(),
+                    }
+                }
+            }
+            _ => todo!(),
+        }
+        Ok(elem)
+    }
 }
 
 fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
@@ -35,15 +67,61 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
             if cli.silent {
                 lex(token, lexer, &|_| ())?;
             } else {
+                let path: Vec<_> = cli.path.as_deref().map(parse_path).unwrap_or(Vec::new());
                 use std::io::Write;
-                lex(token, lexer, &|b| io::stdout().write_all(b).unwrap())?;
-                println!();
+                filter(&path, token, lexer, &|b| io::stdout().write_all(b).unwrap())?;
             }
             seen = true;
         }
         if !cli.many && !seen {
             Err(Expect::Value)?
         }
+    }
+    Ok(())
+}
+
+fn filter<L: LexAlloc>(
+    path: &[PathElem],
+    token: Token,
+    lexer: &mut L,
+    print: &impl Fn(&[u8]),
+) -> Result<(), Error> {
+    let (elem, rest) = if let Some(path) = path.split_first() {
+        path
+    } else {
+        lex(token, lexer, print)?;
+        println!();
+        return Ok(());
+    };
+
+    match token {
+        Token::LSquare => {
+            let mut idx = 0;
+            lexer.seq(Token::RSquare, |token, lexer| {
+                let out = if elem.ints.is_empty() || elem.ints.contains(&idx) {
+                    filter(rest, token, lexer, print)
+                } else {
+                    hifijson::ignore::parse(token, lexer)
+                };
+                idx += 1;
+                out
+            })?;
+        }
+        Token::LCurly => {
+            let mut idx = 0;
+            lexer.seq(Token::RCurly, |token, lexer| {
+                idx += 1;
+
+                let key = lexer.str_colon(token, |lexer| lexer.str_string().map_err(Error::Str))?;
+                let token = lexer.ws_token().ok_or(Expect::Value)?;
+                if elem.strs.is_empty() || elem.strs.iter().any(|s| s == key.deref()) {
+                    filter(rest, token, lexer, print)
+                } else {
+                    hifijson::ignore::parse(token, lexer)
+                }
+            })?;
+        }
+        _ => todo!(),
     }
     Ok(())
 }
@@ -71,7 +149,7 @@ fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Resu
             print(b"]");
         }
         Token::LCurly => {
-            print(b"{{");
+            print(b"{");
             let mut first = true;
             lexer.seq(Token::RCurly, |token, lexer| {
                 if !core::mem::take(&mut first) {
@@ -82,7 +160,7 @@ fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Resu
                 print(b":");
                 lex(lexer.ws_token().ok_or(Expect::Value)?, lexer, print)
             })?;
-            print(b"}}")
+            print(b"}")
         }
         _ => Err(Expect::Value)?,
     }
@@ -111,15 +189,25 @@ fn process_stdin(cli: &Cli) -> io::Result<()> {
     Ok(())
 }
 
+fn parse_path(path: &str) -> Vec<PathElem> {
+    use hifijson::token::Lex;
+    let lexer = &mut SliceLexer::new(path.as_bytes());
+    core::iter::from_fn(|| Some(value::parse_unbounded(lexer.ws_token()?, lexer)))
+        .map(|e| PathElem::try_from(e.unwrap()).unwrap())
+        .collect()
+}
+
 fn main() -> io::Result<()> {
     let mut cli = Cli::default();
     let mut files = Vec::new();
 
-    for arg in std::env::args().skip(1) {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
         match &*arg {
             "--parse" => cli.parse = true,
             "--many" => cli.many = true,
             "--silent" => cli.silent = true,
+            "--path" => cli.path = args.next(),
             _ => files.push(arg),
         }
     }

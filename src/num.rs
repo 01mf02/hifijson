@@ -27,6 +27,13 @@ pub struct Parts {
     pub exp: Option<NonZeroUsize>,
 }
 
+impl Parts {
+    /// Return true if the number contains neither a dot not an exponent.
+    pub fn is_int(&self) -> bool {
+        self.dot.is_none() && self.exp.is_none()
+    }
+}
+
 /// Number lexing, ignoring the number.
 pub trait Lex: Read {
     /// Perform `f` for every digit read.
@@ -69,7 +76,7 @@ pub trait Lex: Read {
 
         loop {
             match self.peek_next() {
-                Some(b'.') if parts.dot.is_none() && parts.exp.is_none() => {
+                Some(b'.') if parts.is_int() => {
                     parts.dot = Some(NonZeroUsize::new(pos).unwrap());
                     self.read_next();
                     pos += 1 + self.digits1_ignore()?.get();

@@ -84,7 +84,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
             Token::Quote => visitor.visit_str(&self.lexer.str_string().map_err(Str)?),
             Token::DigitOrMinus => {
                 let (n, parts) = self.lexer.num_string().map_err(Num)?;
-                if parts.dot.is_none() && parts.exp.is_none() {
+                if parts.is_int() {
                     if n.starts_with('-') {
                         visitor.visit_i64(parse_number(&n)?)
                     } else {

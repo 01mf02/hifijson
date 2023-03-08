@@ -64,7 +64,7 @@
 //!
 //! Often, it is better for performance to operate directly on the tokens that the lexer yields.
 //! For example, the following example counts the number of values in the input JSON.
-//! Furthermore, it does so while requiring only constant memory!
+//! Unlike the previous examples, it requires only constant memory!
 //!
 //! ~~~
 //! use hifijson::{Token, Error};

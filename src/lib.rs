@@ -288,6 +288,14 @@ impl<'a> SliceLexer<'a> {
 }
 
 /// JSON lexer from an iterator over (fallible) bytes.
+///
+/// This can be used to lex from a [`Read`](std::io::Read) as follows:
+///
+/// ~~~
+/// use std::io::Read;
+/// let read = std::io::stdin();
+/// let lexer = hifijson::IterLexer::new(read.bytes());
+/// ~~~
 pub struct IterLexer<E, I> {
     bytes: I,
     last: Option<u8>,

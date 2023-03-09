@@ -145,8 +145,8 @@
 //!
 //! let filename = std::env::args().nth(1);
 //! if let Some(filename) = filename {
-//!     let file = std::fs::read_to_string(filename).expect("read file");
-//!     process(hifijson::SliceLexer::new(file.as_bytes()))
+//!     let file = std::fs::read(filename).expect("read file");
+//!     process(hifijson::SliceLexer::new(&file))
 //! } else {
 //!     use std::io::Read;
 //!     process(hifijson::IterLexer::new(std::io::stdin().bytes()))
@@ -282,6 +282,10 @@ pub struct SliceLexer<'a> {
 
 impl<'a> SliceLexer<'a> {
     /// Create a new slice lexer.
+    ///
+    /// A fast way to obtain the contents of a file as `&[u8]` is memory mapping;
+    /// see for example the [memmap2](https://docs.rs/memmap2) crate.
+    ///
     pub fn new(slice: &'a [u8]) -> Self {
         Self { slice }
     }

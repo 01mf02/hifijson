@@ -220,7 +220,7 @@
 //!
 //! ## More Examples
 //!
-//! See the [cat](examples/cat.rs) program for a more worked version of a JSON "pretty" printer
+//! See the `cat` example for a more worked version of a JSON "pretty" printer
 //! that can be also used to lazily filter parts of the data based on a path.
 //! hifijson also powers all JSON reading in the [jaq](https://crates.io/crates/jaq) crate,
 //! for which it was originally created.

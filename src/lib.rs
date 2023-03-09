@@ -33,6 +33,8 @@
 //! Or suppose that you are reading an object `{"title": ..., "reviews": ...}`,
 //! and you do not feel like caring about reviews today.
 //! Then you can simply skip reading the value for reviews by using [`ignore::parse`].
+//! Going wild and stretching the syntax a bit, you can also make
+//! a parser that accepts any value (instead of only strings as mandated by JSON) as object key.
 //! Or, if you just want to have a complete JSON value, then
 //! you can use [`value::parse_unbounded`].
 //! The choice is yours.
@@ -219,7 +221,9 @@
 //! ## More Examples
 //!
 //! See the [cat](examples/cat.rs) program for a more worked version of a JSON "pretty" printer
-//! that can be also used to filter parts of the data based on a path.
+//! that can be also used to lazily filter parts of the data based on a path.
+//! hifijson also powers all JSON reading in the [jaq](https://crates.io/crates/jaq) crate,
+//! for which it was originally created.
 
 #![no_std]
 #![forbid(unsafe_code)]

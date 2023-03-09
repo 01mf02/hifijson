@@ -189,6 +189,9 @@ fn process_stdin(cli: &Cli) -> io::Result<()> {
     Ok(())
 }
 
+/// Parse something like `[1]["a", "b"][]` to a path.
+///
+/// This is interpreted similarly to jq `.[1].["a", "b"].[]`.
 fn parse_path(path: &str) -> Vec<PathElem> {
     use hifijson::token::Lex;
     let lexer = &mut SliceLexer::new(path.as_bytes());

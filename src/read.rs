@@ -3,6 +3,16 @@ pub trait Read {
     /// Return `true` if the given byte sequence is a prefix of the input.
     fn strip_prefix<const N: usize>(&mut self, s: [u8; N]) -> bool;
 
+    /// Run a function on current input until a certain condition is fulfilled.
+    fn foreach_until(&mut self, mut f: impl FnMut(u8), mut stop: impl FnMut(u8) -> bool) {
+        self.skip_until(|c| {
+            stop(c) || {
+                f(c);
+                false
+            }
+        })
+    }
+
     fn skip_until(&mut self, stop: impl FnMut(u8) -> bool);
 
     /// Ignore input until `stop` yields true.

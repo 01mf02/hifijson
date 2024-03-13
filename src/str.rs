@@ -160,8 +160,13 @@ impl State {
 pub trait Lex: escape::Lex {
     /// Read a string without saving it.
     fn str_ignore(&mut self) -> Result<(), Error> {
+        self.str_foreach(|_| ())
+    }
+
+    /// Run a function for every character of the string.
+    fn str_foreach(&mut self, f: impl FnMut(u8)) -> Result<(), Error> {
         let mut state = State::default();
-        self.skip_until(|c| state.process(c));
+        self.foreach_until(f, |c| state.process(c));
         state.finish(|| self.take_next())
     }
 }

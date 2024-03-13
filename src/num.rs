@@ -51,25 +51,41 @@ pub trait Lex: Read {
         NonZeroUsize::new(len).ok_or(Error::ExpectedDigit)
     }
 
-    /// Lex a number and ignore its contents, saving only its parts.
-    fn num_ignore(&mut self) -> Result<Parts, Error> {
+    /// Run function for every digit, fail if no digit encountered.
+    fn digits1_foreach(&mut self, mut f: impl FnMut(u8)) -> Result<NonZeroUsize, Error> {
+        let mut len = 0;
+        self.digits_foreach(|d| {
+            f(d);
+            len += 1
+        });
+        NonZeroUsize::new(len).ok_or(Error::ExpectedDigit)
+    }
+
+    /// Run function for each character of a number.
+    fn num_foreach(&mut self, mut f: impl FnMut(u8)) -> Result<Parts, Error> {
         let mut pos = 0;
         let mut parts = Parts::default();
 
         if let Some(b'-') = self.peek_next() {
+            f(b'-');
             self.read_next();
             pos += 1;
         }
 
         match self.peek_next() {
             Some(b'0') => {
+                f(b'0');
                 self.read_next();
                 pos += 1;
             }
-            Some(b'0'..=b'9') => {
+            Some(digit @ b'1'..=b'9') => {
+                f(*digit);
                 self.read_next();
                 pos += 1;
-                self.digits_foreach(|_| pos += 1)
+                self.digits_foreach(|digit| {
+                    f(digit);
+                    pos += 1
+                })
             }
             _ => return Err(Error::ExpectedDigit),
         }
@@ -78,24 +94,32 @@ pub trait Lex: Read {
             match self.peek_next() {
                 Some(b'.') if parts.is_int() => {
                     parts.dot = Some(NonZeroUsize::new(pos).unwrap());
+                    f(b'.');
                     self.read_next();
-                    pos += 1 + self.digits1_ignore()?.get();
+                    pos += 1 + self.digits1_foreach(&mut f)?.get();
                 }
 
-                Some(b'e' | b'E') if parts.exp.is_none() => {
+                Some(exp @ (b'e' | b'E')) if parts.exp.is_none() => {
                     parts.exp = Some(NonZeroUsize::new(pos).unwrap());
+                    f(*exp);
                     self.read_next();
 
-                    if let Some(b'+' | b'-') = self.peek_next() {
+                    if let Some(sign @ (b'+' | b'-')) = self.peek_next() {
+                        f(*sign);
                         self.read_next();
                         pos += 1;
                     }
 
-                    pos += 1 + self.digits1_ignore()?.get();
+                    pos += 1 + self.digits1_foreach(&mut f)?.get();
                 }
                 _ => return Ok(parts),
             }
         }
+    }
+
+    /// Lex a number and ignore its contents, saving only its parts.
+    fn num_ignore(&mut self) -> Result<Parts, Error> {
+        self.num_foreach(|_| ())
     }
 }
 

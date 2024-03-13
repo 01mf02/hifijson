@@ -1,7 +1,7 @@
 pub trait Write {
     type Bytes: core::ops::Deref<Target = [u8]> + Default;
 
-    /// Read input to `bytes` until `stop` yields true.
+    /// Write input to `bytes` until `stop` yields true.
     fn write_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
 }
 

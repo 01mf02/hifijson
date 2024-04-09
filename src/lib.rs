@@ -7,7 +7,7 @@
 //! As reference, I recommend the excellent article "[Parsing JSON is a Minefield]".
 //! In particular, it is ambiguous how to parse strings and numbers.
 //! For example, JSON does not impose any restriction on the maximal size of numbers,
-//! but in reality, most JSON parsers use a lossless representation,
+//! but in reality, most JSON parsers use a lossy representation,
 //! for example 64-bit floating point.
 //! This is allowed by the JSON specification; however,
 //! at the same time, if we are allowed to fix arbitrariy maximal sizes,

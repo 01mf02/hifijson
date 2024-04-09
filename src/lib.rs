@@ -10,7 +10,7 @@
 //! but in reality, most JSON parsers use a lossy representation,
 //! for example 64-bit floating point.
 //! This is allowed by the JSON specification; however,
-//! at the same time, if we are allowed to fix arbitrariy maximal sizes,
+//! at the same time, if we are allowed to fix arbitrary maximal sizes,
 //! then a parser that fails on every input is a valid parser!
 //! I hope that I could convince you at this point that this is all quite a mess.
 //! The best I can do to help you around this mess is to give *you*

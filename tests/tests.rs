@@ -120,8 +120,8 @@ fn strings() -> Result<(), Error> {
     fails_with(br#""\u00"#, escape(escape::Error::Eof));
 
     fails_with("\"\u{0}\"".as_bytes(), str::Error::Control.into());
-    // corresponds to ASCII code 19 in decimal notation
-    fails_with("\"\u{13}\"".as_bytes(), str::Error::Control.into());
+    // corresponds to ASCII code 31 in decimal notation
+    fails_with("\"\u{1F}\"".as_bytes(), str::Error::Control.into());
     fails_with(br#""abcd"#, str::Error::Eof.into());
 
     parse_fails_with(br#""\uDC37""#, escape(escape::Error::InvalidChar(0xdc37)));

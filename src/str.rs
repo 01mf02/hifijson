@@ -58,7 +58,7 @@ impl<Str: Deref<Target = str>> fmt::Display for Display<Str> {
 /// String lexing error.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
-    /// ASCII control sequence (between 0 and 19) was found
+    /// ASCII control sequence (between 0 and 0x1F) was found
     Control,
     /// escape sequence (starting with `'\n'`) could not be decoded
     Escape(escape::Error),
@@ -138,7 +138,7 @@ impl State {
             match c {
                 b'"' => return true,
                 b'\\' => self.escape = Some(None),
-                0..=19 => self.error = Some(Error::Control),
+                0..=0x1F => self.error = Some(Error::Control),
                 _ => return false,
             };
         }
@@ -190,7 +190,7 @@ pub trait LexWrite: escape::Lex + Read + Write {
         on_escape: impl Fn(&mut Self, Escape, &mut T) -> Result<(), E>,
     ) -> Result<T, E> {
         fn string_end(c: u8) -> bool {
-            matches!(c, b'\\' | b'"' | 0..=19)
+            matches!(c, b'\\' | b'"' | 0..=0x1F)
         }
 
         let mut bytes = Self::Bytes::default();
@@ -199,7 +199,7 @@ pub trait LexWrite: escape::Lex + Read + Write {
         match self.take_next().ok_or(Error::Eof)? {
             b'\\' => (),
             b'"' => return Ok(out),
-            0..=19 => return Err(Error::Control)?,
+            0..=0x1F => return Err(Error::Control)?,
             _ => unreachable!(),
         }
         loop {
@@ -210,7 +210,7 @@ pub trait LexWrite: escape::Lex + Read + Write {
             match self.take_next().ok_or(Error::Eof)? {
                 b'\\' => continue,
                 b'"' => return Ok(out),
-                0..=19 => return Err(Error::Control)?,
+                0..=0x1F => return Err(Error::Control)?,
                 _ => unreachable!(),
             }
         }

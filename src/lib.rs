@@ -289,6 +289,13 @@ impl<'a> SliceLexer<'a> {
     pub fn new(slice: &'a [u8]) -> Self {
         Self { slice }
     }
+
+    /// Return remaining input as a subslice of the original data.
+    ///
+    /// This can be used to find the place where an error occurred.
+    pub fn as_slice(&self) -> &'a [u8] {
+        self.slice
+    }
 }
 
 /// JSON lexer from an iterator over (fallible) bytes.

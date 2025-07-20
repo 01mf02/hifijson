@@ -42,6 +42,37 @@ fn parses_to(slice: &[u8], v: Value<&str, &str>) -> Result<(), Error> {
     Ok(())
 }
 
+fn parses_to_binary_string(slice: &[u8], v: &[u8]) -> Result<(), Error> {
+    SliceLexer::new(slice).exactly_one(ignore::parse)?;
+    IterLexer::new(iter_of_slice(slice)).exactly_one(ignore::parse)?;
+
+    let parsed = SliceLexer::new(slice).exactly_one(parse_binary_string)?;
+    assert_eq!(parsed, v);
+
+    let parsed = IterLexer::new(iter_of_slice(slice)).exactly_one(parse_binary_string)?;
+    assert_eq!(parsed, v);
+
+    Ok(())
+}
+
+fn parse_binary_string(token: hifijson::Token, lexer: &mut impl str::LexAlloc) -> Result<Vec<u8>, Error> {
+    if token != hifijson::Token::Quote {
+        Err(Error::Token(Expect::String))?
+    }
+    lexer.str_fold::<Error, Vec<u8>>(
+        Vec::new(),
+        |bytes, out| {
+            out.extend_from_slice(bytes);
+            Ok(())
+        },
+        |_, escape, out| {
+            let c = char::from_u32(escape.as_u16() as u32).unwrap();
+            out.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
+            Ok(())
+        }
+    )
+}
+
 fn fails_with(slice: &[u8], e: Error) {
     let parsed = SliceLexer::new(slice).exactly_one(ignore::parse);
     assert_eq!(parsed.unwrap_err(), e);
@@ -112,6 +143,8 @@ fn strings() -> Result<(), Error> {
     // the  largest value representable with a surrogate pair
     parses_to(br#""\udbff\udfff""#, Value::String("􏿿"))?;
 
+    parses_to(br#""aa\nbb\ncc""#, Value::String("aa\nbb\ncc"))?;
+
     let escape = |e| Error::Str(str::Error::Escape(e));
 
     fails_with(br#""\x""#, escape(escape::Error::UnknownKind));
@@ -163,6 +196,15 @@ fn objects() -> Result<(), Error> {
     fails_with(br#"{"a" 1"#, Expect::Colon.into());
     fails_with(br#"{"a": 1"#, Expect::CommaOrEnd.into());
     fails_with(br#"{"a": 1,"#, Expect::Value.into());
+
+    Ok(())
+}
+
+#[test]
+fn binary_strings() -> Result<(), Error> {
+    parses_to_binary_string(br#""aaa\nbbb\nccc""#, b"aaa\nbbb\nccc")?;
+    parses_to_binary_string(b"\"aaa\xffbbb\xffccc\"", b"aaa\xffbbb\xffccc")?;
+    parses_to_binary_string(b"\"aaa\\u2200\xe2\x88\x80ccc\"", "aaa\u{2200}\u{2200}ccc".as_bytes())?;
 
     Ok(())
 }

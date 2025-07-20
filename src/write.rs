@@ -22,6 +22,7 @@ impl<E, I: Iterator<Item = Result<u8, E>>> Write for crate::IterLexer<E, I> {
 
     fn write_until(&mut self, bytes: &mut Self::Bytes, mut stop: impl FnMut(u8) -> bool) {
         use crate::Read;
+        bytes.clear();
         while let Some(c) = self.read() {
             if stop(c) {
                 self.last = Some(c);

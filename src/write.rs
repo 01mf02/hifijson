@@ -2,6 +2,8 @@ pub trait Write {
     type Bytes: core::ops::Deref<Target = [u8]> + Default;
 
     /// Write input to `bytes` until `stop` yields true.
+    ///
+    /// This function does not return a new [`Self::Bytes`] to avoid allocations.
     fn write_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool);
 }
 

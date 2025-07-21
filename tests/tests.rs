@@ -1,7 +1,7 @@
 use core::num::NonZeroUsize;
-use hifijson::token::Lex;
+use hifijson::token::{Lex, Token};
 use hifijson::value::{self, Value};
-use hifijson::{escape, ignore, num, str, Error, Expect, IterLexer, SliceLexer};
+use hifijson::{escape, ignore, num, str, Error, Expect, IterLexer, LexAlloc, SliceLexer};
 
 fn bol<Num, Str>(b: bool) -> Value<Num, Str> {
     Value::Bool(b)
@@ -55,22 +55,19 @@ fn parses_to_binary_string(slice: &[u8], v: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-fn parse_binary_string(token: hifijson::Token, lexer: &mut impl str::LexAlloc) -> Result<Vec<u8>, Error> {
+fn parse_binary_string<L: LexAlloc>(token: Token, lexer: &mut L) -> Result<Vec<u8>, Error> {
     if token != hifijson::Token::Quote {
         Err(Error::Token(Expect::String))?
     }
-    lexer.str_fold::<Error, Vec<u8>>(
-        Vec::new(),
-        |bytes, out| {
-            out.extend_from_slice(bytes);
-            Ok(())
-        },
-        |_, escape, out| {
-            let c = char::from_u32(escape.as_u16() as u32).unwrap();
-            out.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
-            Ok(())
-        }
-    )
+    let on_string = |bytes: &mut L::Bytes, out: &mut Vec<u8>| {
+        out.extend_from_slice(bytes);
+        Ok(())
+    };
+    lexer.str_fold(Vec::new(), on_string, |lexer, escape, out| {
+        let c = lexer.escape_char(escape).map_err(str::Error::Escape)?;
+        out.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
+        Ok(())
+    })
 }
 
 fn fails_with(slice: &[u8], e: Error) {
@@ -204,7 +201,10 @@ fn objects() -> Result<(), Error> {
 fn binary_strings() -> Result<(), Error> {
     parses_to_binary_string(br#""aaa\nbbb\nccc""#, b"aaa\nbbb\nccc")?;
     parses_to_binary_string(b"\"aaa\xffbbb\xffccc\"", b"aaa\xffbbb\xffccc")?;
-    parses_to_binary_string(b"\"aaa\\u2200\xe2\x88\x80ccc\"", "aaa\u{2200}\u{2200}ccc".as_bytes())?;
+    parses_to_binary_string(
+        b"\"aaa\\u2200\xe2\x88\x80ccc\"",
+        "aaa\u{2200}\u{2200}ccc".as_bytes(),
+    )?;
 
     Ok(())
 }

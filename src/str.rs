@@ -260,16 +260,14 @@ impl<E, I: Iterator<Item = Result<u8, E>>> LexAlloc for crate::IterLexer<E, I> {
         use alloc::string::String;
 
         let on_string = |bytes: &mut Self::Bytes, out: &mut Self::Str| {
-            if bytes.is_empty() {
-                return Ok(());
+            match bytes {
+                b if b.is_empty() => (),
+                b if out.is_empty() => {
+                    *out = String::from_utf8(core::mem::take(b))
+                        .map_err(|e| Error::Utf8(e.utf8_error()))?
+                }
+                b => out.push_str(core::str::from_utf8(b).map_err(Error::Utf8)?),
             }
-            if out.is_empty() {
-                *out = String::from_utf8(core::mem::take(bytes))
-                    .map_err(|e| Error::Utf8(e.utf8_error()))?;
-            } else {
-                out.push_str(core::str::from_utf8(bytes).map_err(Error::Utf8)?);
-                bytes.clear();
-            };
             Ok::<_, Error>(())
         };
         use crate::escape::Lex;

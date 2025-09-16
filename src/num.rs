@@ -37,28 +37,19 @@ impl Parts {
 /// Number lexing, ignoring the number.
 pub trait Lex: Read {
     /// Perform `f` for every digit read.
-    fn digits_foreach(&mut self, mut f: impl FnMut(u8)) {
-        while let Some(digit @ (b'0'..=b'9')) = self.peek_next() {
-            f(*digit);
-            self.read_next()
-        }
-    }
-
-    /// Return number of digits read and fail if no digit was encountered.
-    fn digits1_ignore(&mut self) -> Result<NonZeroUsize, Error> {
+    fn digits_foreach(&mut self, mut f: impl FnMut(u8)) -> usize {
         let mut len = 0;
-        self.digits_foreach(|_| len += 1);
-        NonZeroUsize::new(len).ok_or(Error::ExpectedDigit)
+        while let Some(digit @ (b'0'..=b'9')) = self.peek_next() {
+            f(digit);
+            self.take_next();
+            len += 1;
+        }
+        len
     }
 
     /// Run function for every digit, fail if no digit encountered.
-    fn digits1_foreach(&mut self, mut f: impl FnMut(u8)) -> Result<NonZeroUsize, Error> {
-        let mut len = 0;
-        self.digits_foreach(|d| {
-            f(d);
-            len += 1
-        });
-        NonZeroUsize::new(len).ok_or(Error::ExpectedDigit)
+    fn digits1_foreach(&mut self, f: impl FnMut(u8)) -> Result<NonZeroUsize, Error> {
+        NonZeroUsize::new(self.digits_foreach(f)).ok_or(Error::ExpectedDigit)
     }
 
     /// Run function for each character of a number.
@@ -66,26 +57,16 @@ pub trait Lex: Read {
         let mut pos = 0;
         let mut parts = Parts::default();
 
-        if let Some(b'-') = self.peek_next() {
-            f(b'-');
-            self.read_next();
-            pos += 1;
-        }
-
         match self.peek_next() {
             Some(b'0') => {
                 f(b'0');
-                self.read_next();
+                self.take_next();
                 pos += 1;
             }
             Some(digit @ b'1'..=b'9') => {
-                f(*digit);
-                self.read_next();
-                pos += 1;
-                self.digits_foreach(|digit| {
-                    f(digit);
-                    pos += 1
-                })
+                f(digit);
+                self.take_next();
+                pos += 1 + self.digits_foreach(&mut f);
             }
             _ => return Err(Error::ExpectedDigit),
         }
@@ -95,18 +76,18 @@ pub trait Lex: Read {
                 Some(b'.') if parts.is_int() => {
                     parts.dot = Some(NonZeroUsize::new(pos).unwrap());
                     f(b'.');
-                    self.read_next();
+                    self.take_next();
                     pos += 1 + self.digits1_foreach(&mut f)?.get();
                 }
 
                 Some(exp @ (b'e' | b'E')) if parts.exp.is_none() => {
                     parts.exp = Some(NonZeroUsize::new(pos).unwrap());
-                    f(*exp);
-                    self.read_next();
+                    f(exp);
+                    self.take_next();
 
                     if let Some(sign @ (b'+' | b'-')) = self.peek_next() {
-                        f(*sign);
-                        self.read_next();
+                        f(sign);
+                        self.take_next();
                         pos += 1;
                     }
 
@@ -138,7 +119,7 @@ pub trait LexWrite: Lex + Write {
 
 fn digits(s: &[u8]) -> usize {
     s.iter()
-        .position(|c| !matches!(c, b'0'..=b'9'))
+        .position(|c| !c.is_ascii_digit())
         .unwrap_or(s.len())
 }
 
@@ -146,7 +127,7 @@ impl<'a> LexWrite for crate::SliceLexer<'a> {
     type Num = &'a str;
 
     fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<Parts, Error> {
-        let mut pos = usize::from(self.slice[0] == b'-');
+        let mut pos = 0;
         let mut parts = Parts::default();
 
         let digits1 = |s| NonZeroUsize::new(digits(s)).ok_or(Error::ExpectedDigit);
@@ -194,10 +175,10 @@ impl<'a> LexWrite for crate::SliceLexer<'a> {
 impl<E, I: Iterator<Item = Result<u8, E>>> crate::IterLexer<E, I> {
     fn digits(&mut self, num: &mut <Self as Write>::Bytes) -> Result<(), Error> {
         let mut some_digit = false;
-        while let Some(digit @ (b'0'..=b'9')) = self.last {
+        while let Some(digit @ (b'0'..=b'9')) = self.peek_next() {
             some_digit = true;
             num.push(digit);
-            self.last = self.read();
+            self.take_next();
         }
         if some_digit && self.error.is_none() {
             Ok(())
@@ -214,24 +195,19 @@ impl<E, I: Iterator<Item = Result<u8, E>>> LexWrite for crate::IterLexer<E, I> {
     fn num_bytes(&mut self, num: &mut Self::Bytes) -> Result<Parts, Error> {
         let mut parts = Parts::default();
 
-        if self.last == Some(b'-') {
-            num.push(b'-');
-            self.last = self.read();
-        }
-
-        if self.last == Some(b'0') {
+        if self.peek_next() == Some(b'0') {
             num.push(b'0');
-            self.last = self.read();
+            self.take_next();
         } else {
             self.digits(num)?;
         }
 
         loop {
-            match self.last {
+            match self.peek_next() {
                 Some(b'.') if parts.dot.is_none() && parts.exp.is_none() => {
                     parts.dot = Some(NonZeroUsize::new(num.len()).unwrap());
                     num.push(b'.');
-                    self.last = self.read();
+                    self.take_next();
 
                     self.digits(num)?;
                 }
@@ -239,11 +215,11 @@ impl<E, I: Iterator<Item = Result<u8, E>>> LexWrite for crate::IterLexer<E, I> {
                 Some(e @ (b'e' | b'E')) if parts.exp.is_none() => {
                     parts.exp = Some(NonZeroUsize::new(num.len()).unwrap());
                     num.push(e);
-                    self.last = self.read();
+                    self.take_next();
 
-                    if let Some(sign @ (b'+' | b'-')) = self.last {
+                    if let Some(sign @ (b'+' | b'-')) = self.peek_next() {
                         num.push(sign);
-                        self.last = self.read();
+                        self.take_next();
                     }
 
                     self.digits(num)?;

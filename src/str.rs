@@ -26,7 +26,7 @@
 //!
 //! When in doubt, go for `LexAlloc`.
 
-use crate::escape::{self, Escape};
+use crate::escape::{self, Escape, Hex};
 use crate::{Read, Write};
 use core::fmt;
 use core::ops::Deref;
@@ -62,6 +62,8 @@ pub enum Error {
     Control,
     /// escape sequence (starting with `'\n'`) could not be decoded
     Escape(escape::Error),
+    /// an `\xHH`-escaped byte was encountered
+    Byte(u8),
     /// string was not terminated
     Eof,
     /// string is not in UTF-8
@@ -92,6 +94,7 @@ impl core::fmt::Display for Error {
         match self {
             Control => "invalid string control character".fmt(f),
             Escape(e) => e.fmt(f),
+            Byte(b) => write!(f, "invalid byte escape {b:02x}"),
             Eof => "unterminated string".fmt(f),
             Utf8(e) => e.fmt(f),
         }
@@ -102,9 +105,9 @@ impl core::fmt::Display for Error {
 #[derive(Default)]
 struct State {
     /// Are we in an escape sequence, and if so,
-    /// are we in a unicode escape sequence, and if so,
+    /// are we in a hex escape sequence, and if so,
     /// at which position in the hex code are we?
-    escape: Option<Option<u8>>,
+    escape: Option<Option<Hex<u8, u8>>>,
     /// Did we encounter an error so far?
     error: Option<Error>,
 }
@@ -114,21 +117,24 @@ impl State {
     /// return whether the string is finished or an error occurred.
     fn process(&mut self, c: u8) -> bool {
         // are we in an escape sequence (started by '\')?
-        if let Some(unicode) = &mut self.escape {
-            // are we in a Unicode escape sequence (started by "\u")?
-            if let Some(hex_pos) = unicode {
+        if let Some(escape) = &mut self.escape {
+            // are we in a hex escape sequence (started by "\u" or "\x")?
+            if let Some(hex_pos) = escape {
                 if escape::decode_hex(c).is_none() {
                     self.error = Some(escape::Error::InvalidHex.into());
-                } else if *hex_pos < 3 {
-                    *hex_pos += 1
                 } else {
-                    self.escape = None;
+                    match hex_pos {
+                        Hex::Unicode(pos) if *pos < 3 => *pos += 1,
+                        Hex::Byte(pos) if *pos < 1 => *pos += 1,
+                        _ => self.escape = None,
+                    }
                 }
             } else {
-                // we are in a non-Unicode escape sequence,
+                // we are about to enter a new escape sequence,
                 // let us see which kind of sequence ...
                 match Escape::try_from(c) {
-                    Some(Escape::Unicode(_)) => *unicode = Some(0),
+                    Some(Escape::Hex(Hex::Unicode(_))) => *escape = Some(Hex::Unicode(0)),
+                    Some(Escape::Hex(Hex::Byte(_))) => *escape = Some(Hex::Byte(0)),
                     Some(_) => self.escape = None,
                     None => self.error = Some(escape::Error::UnknownKind.into()),
                 }
@@ -238,7 +244,7 @@ impl<'a> LexAlloc for crate::SliceLexer<'a> {
 
         let on_string = |bytes: &mut Self::Bytes, out: &mut Self::Str| {
             match core::str::from_utf8(bytes).map_err(Error::Utf8)? {
-                s if s.is_empty() => (),
+                "" => (),
                 s if out.is_empty() => *out = Cow::Borrowed(s),
                 s => out.to_mut().push_str(s),
             };
@@ -246,7 +252,8 @@ impl<'a> LexAlloc for crate::SliceLexer<'a> {
         };
         use crate::escape::Lex;
         self.str_fold(Cow::Borrowed(""), on_string, |lexer, escape, out| {
-            out.to_mut().push(lexer.escape_char(escape)?);
+            let c = lexer.escape_char(escape)?;
+            out.to_mut().push(c.as_unicode().map_err(Error::Byte)?);
             Ok(())
         })
     }
@@ -272,7 +279,8 @@ impl<E, I: Iterator<Item = Result<u8, E>>> LexAlloc for crate::IterLexer<E, I> {
         };
         use crate::escape::Lex;
         self.str_fold(Self::Str::new(), on_string, |lexer, escape, out| {
-            out.push(lexer.escape_char(escape)?);
+            let c = lexer.escape_char(escape)?;
+            out.push(c.as_unicode().map_err(Error::Byte)?);
             Ok(())
         })
     }

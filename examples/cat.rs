@@ -25,12 +25,14 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> TryFrom<value::Value<Nu
 
     fn try_from(v: value::Value<Num, Str>) -> Result<Self, Self::Error> {
         let mut elem = Self::default();
-        use value::Value::*;
+        use value::{Sign::Pos, Value::*};
         match v {
             Array(arr) => {
                 for x in arr {
                     match x {
-                        Number((n, parts)) if parts.is_int() => elem.ints.push(n.parse().unwrap()),
+                        Number(Pos, (n, parts)) if parts.is_int() => {
+                            elem.ints.push(n.parse().unwrap())
+                        }
                         String(s) => elem.strs.push(s.to_string()),
                         _ => todo!(),
                     }
@@ -53,7 +55,7 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
                 };
             }
         } else {
-            let v = lexer.exactly_one(value::parse_unbounded)?;
+            let v = lexer.exactly_one(L::ws_token, value::parse_unbounded)?;
             if !cli.silent {
                 println!("{}", v)
             };
@@ -97,7 +99,7 @@ fn filter<L: LexAlloc>(
     match token {
         Token::LSquare => {
             let mut idx = 0;
-            lexer.seq(Token::RSquare, |token, lexer| {
+            lexer.seq(Token::RSquare, L::ws_token, |token, lexer| {
                 let out = if elem.ints.is_empty() || elem.ints.contains(&idx) {
                     filter(rest, token, lexer, print)
                 } else {
@@ -109,10 +111,12 @@ fn filter<L: LexAlloc>(
         }
         Token::LCurly => {
             let mut idx = 0;
-            lexer.seq(Token::RCurly, |token, lexer| {
+            lexer.seq(Token::RCurly, L::ws_token, |token, lexer| {
                 idx += 1;
 
-                let key = lexer.str_colon(token, |lexer| lexer.str_string().map_err(Error::Str))?;
+                let key = lexer.str_colon(token, L::ws_token, |lexer| {
+                    lexer.str_string().map_err(Error::Str)
+                })?;
                 let token = lexer.ws_token().ok_or(Expect::Value)?;
                 if elem.strs.is_empty() || elem.strs.iter().any(|s| s == key.deref()) {
                     filter(rest, token, lexer, print)
@@ -128,10 +132,16 @@ fn filter<L: LexAlloc>(
 
 fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), Error> {
     match token {
-        Token::Null => print(b"null"),
-        Token::True => print(b"true"),
-        Token::False => print(b"false"),
-        Token::DigitOrMinus => {
+        Token::Letter => print(match lexer.null_or_bool().ok_or(Expect::Value)? {
+            None => b"null",
+            Some(true) => b"true",
+            Some(false) => b"false",
+        }),
+        Token::Minus => {
+            print(b"-");
+            lex(Token::Digit, lexer, print)?
+        }
+        Token::Digit => {
             let mut num = Default::default();
             let _pos = lexer.num_bytes(&mut num)?;
             print(&num)
@@ -140,7 +150,7 @@ fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Resu
         Token::LSquare => {
             print(b"[");
             let mut first = true;
-            lexer.seq(Token::RSquare, |token, lexer| {
+            lexer.seq(Token::RSquare, L::ws_token, |token, lexer| {
                 if !core::mem::take(&mut first) {
                     print(b",");
                 }
@@ -151,12 +161,14 @@ fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Resu
         Token::LCurly => {
             print(b"{");
             let mut first = true;
-            lexer.seq(Token::RCurly, |token, lexer| {
+            lexer.seq(Token::RCurly, L::ws_token, |token, lexer| {
                 if !core::mem::take(&mut first) {
                     print(b",");
                 }
 
-                lexer.str_colon(token, |lexer| lex_string(lexer, print).map_err(Error::Str))?;
+                lexer.str_colon(token, L::ws_token, |lexer| {
+                    lex_string(lexer, print).map_err(Error::Str)
+                })?;
                 print(b":");
                 lex(lexer.ws_token().ok_or(Expect::Value)?, lexer, print)
             })?;

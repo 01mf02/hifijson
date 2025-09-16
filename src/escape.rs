@@ -2,9 +2,18 @@
 
 use crate::Read;
 use core::fmt;
+use core::ops::{Add, Shl};
 
 /// Escape sequence, such as `\n` or `\u00d6`.
 pub enum Escape {
+    /// literal
+    Lit(Lit),
+    /// `\uHHHH` or `\hHH`, where `HH`/`HHHH` are hexadecimal numbers
+    Hex(Hex<u16>),
+}
+
+/// Escape literal, such as `\n`.
+pub enum Lit {
     /// `\"`
     QuotationMark,
     /// `\\`
@@ -21,14 +30,21 @@ pub enum Escape {
     Tab,
     /// `\r`
     CarriageReturn,
-    /// `\uHHHH`, where `HHHH` is a hexadecimal number
-    Unicode(u16),
 }
 
-impl Escape {
+/// Escape sequence containing a hexadecimal number, such as `\u00d6`.
+#[derive(Copy, Clone)]
+pub enum Hex<U, B = u8> {
+    /// `\uHHHH`
+    Unicode(U),
+    /// `\xHH` --- this is not part of the JSON standard
+    Byte(B),
+}
+
+impl Lit {
     /// Try to interpret an ASCII character as first character of an escape sequence.
-    pub fn try_from(c: u8) -> Option<Escape> {
-        use Escape::*;
+    pub fn try_from(c: u8) -> Option<Self> {
+        use Lit::*;
         Some(match c {
             b'"' => QuotationMark,
             b'\\' => ReverseSolidus,
@@ -38,14 +54,13 @@ impl Escape {
             b'n' => LineFeed,
             b'r' => CarriageReturn,
             b't' => Tab,
-            b'u' => Unicode(0),
             _ => return None,
         })
     }
 
-    fn as_char(&self) -> Result<char, u16> {
-        use Escape::*;
-        Ok(match self {
+    fn as_char(&self) -> char {
+        use Lit::*;
+        match self {
             QuotationMark => '"',
             ReverseSolidus => '\\',
             Solidus => '/',
@@ -54,32 +69,53 @@ impl Escape {
             LineFeed => 'n',
             CarriageReturn => 'r',
             Tab => 't',
-            Unicode(u) => return Err(*u),
-        })
+        }
     }
 
-    /// Return escape sequence as UTF-16.
-    pub fn as_u16(&self) -> u16 {
-        use Escape::*;
+    fn as_u8(&self) -> u8 {
+        use Lit::*;
         match self {
-            QuotationMark => 0x0022,
-            ReverseSolidus => 0x005C,
-            Solidus => 0x002F,
-            Backspace => 0x0008,
-            FormFeed => 0x000C,
-            LineFeed => 0x000A,
-            CarriageReturn => 0x000D,
-            Tab => 0x0009,
-            Unicode(u) => *u,
+            QuotationMark => 0x22,
+            ReverseSolidus => 0x5C,
+            Solidus => 0x2F,
+            Backspace => 0x08,
+            FormFeed => 0x0C,
+            LineFeed => 0x0A,
+            CarriageReturn => 0x0D,
+            Tab => 0x09,
         }
+    }
+}
+
+impl<U, B> Hex<U, B> {
+    /// Return Unicode value if possible, else byte value.
+    pub fn as_unicode(self) -> Result<U, B> {
+        match self {
+            Self::Unicode(u) => Ok(u),
+            Self::Byte(b) => Err(b),
+        }
+    }
+}
+
+impl Escape {
+    /// Try to interpret an ASCII character as first character of an escape sequence.
+    pub fn try_from(c: u8) -> Option<Escape> {
+        Lit::try_from(c).map(Escape::Lit).or_else(|| {
+            Some(Escape::Hex(match c {
+                b'x' => Hex::Byte(0),
+                b'u' => Hex::Unicode(0),
+                _ => return None,
+            }))
+        })
     }
 }
 
 impl fmt::Display for Escape {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.as_char() {
-            Ok(c) => write!(f, "\\{}", c),
-            Err(u) => write!(f, "\\u{:04x}", u),
+        match self {
+            Self::Lit(l) => write!(f, "\\{}", l.as_char()),
+            Self::Hex(Hex::Unicode(u)) => write!(f, "\\u{u:04x}"),
+            Self::Hex(Hex::Byte(b)) => write!(f, "\\x{b:02x}"),
         }
     }
 }
@@ -91,6 +127,18 @@ pub(crate) fn decode_hex(val: u8) -> Option<u8> {
         b'A'..=b'F' => Some(val - b'A' + 10),
         _ => None,
     }
+}
+
+fn hexn<T: From<u8> + Shl<Output = T> + Add<Output = T>>(
+    lex: &mut (impl Lex + ?Sized),
+) -> Result<T, Error> {
+    let mut hex: T = 0.into();
+    for _ in 0..core::mem::size_of::<T>() * 2 {
+        let h = lex.take_next().ok_or(Error::Eof)?;
+        let h = decode_hex(h).ok_or(Error::InvalidHex)?;
+        hex = (hex << 4.into()) + h.into();
+    }
+    Ok(hex)
 }
 
 /// Escape sequence lexing error.
@@ -126,37 +174,35 @@ impl core::fmt::Display for Error {
 /// This does not require any allocation.
 pub trait Lex: Read {
     /// Convert a read escape sequence to a char, potentially reading more.
-    fn escape_char(&mut self, escape: Escape) -> Result<char, Error> {
+    fn escape_char(&mut self, escape: Escape) -> Result<Hex<char>, Error> {
         let escape = match escape {
-            Escape::Unicode(high @ (0xD800..=0xDBFF)) => {
-                if self.read() != Some(b'\\') {
+            Escape::Hex(Hex::Unicode(high @ (0xD800..=0xDBFF))) => {
+                if self.take_next() != Some(b'\\') {
                     return Err(Error::ExpectedLowSurrogate);
                 }
-                if let Escape::Unicode(low @ (0xDC00..=0xDFFF)) = self.escape()? {
+                if let Escape::Hex(Hex::Unicode(low @ (0xDC00..=0xDFFF))) = self.escape()? {
                     ((high - 0xD800) as u32 * 0x400 + (low - 0xDC00) as u32) + 0x10000
                 } else {
                     return Err(Error::ExpectedLowSurrogate);
                 }
             }
-            e => e.as_u16() as u32,
+            Escape::Hex(Hex::Byte(b)) => return Ok(Hex::Byte(b)),
+            Escape::Lit(l) => l.as_u8().into(),
+            Escape::Hex(Hex::Unicode(u)) => u.into(),
         };
-        char::from_u32(escape).ok_or(Error::InvalidChar(escape))
+        char::from_u32(escape)
+            .map(Hex::Unicode)
+            .ok_or(Error::InvalidChar(escape))
     }
 
     /// Read an escape sequence such as `\n` or `\u0009` (without leading `\`).
     fn escape(&mut self) -> Result<Escape, Error> {
-        let typ = self.read().ok_or(Error::Eof)?;
+        let typ = self.take_next().ok_or(Error::Eof)?;
         let escape = Escape::try_from(typ).ok_or(Error::UnknownKind)?;
-        if matches!(escape, Escape::Unicode(_)) {
-            let mut hex = 0;
-            for _ in 0..4 {
-                let h = self.read().ok_or(Error::Eof)?;
-                let h = decode_hex(h).ok_or(Error::InvalidHex)?;
-                hex = (hex << 4) + (h as u16);
-            }
-            Ok(Escape::Unicode(hex))
-        } else {
-            Ok(escape)
+        match escape {
+            Escape::Hex(Hex::Unicode(_)) => hexn(self).map(|x| Escape::Hex(Hex::Unicode(x))),
+            Escape::Hex(Hex::Byte(_)) => hexn(self).map(|x| Escape::Hex(Hex::Byte(x))),
+            _ => Ok(escape),
         }
     }
 }

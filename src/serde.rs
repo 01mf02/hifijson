@@ -78,9 +78,10 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
     {
         use crate::Error::{Num, Str};
         match self.token {
-            Token::Null => visitor.visit_unit(),
-            Token::True => visitor.visit_bool(true),
-            Token::False => visitor.visit_bool(false),
+            Token::Letter => match self.lexer.null_or_bool().ok_or(Expect::Value)? {
+                None => visitor.visit_unit(),
+                Some(b) => visitor.visit_bool(b),
+            },
             Token::Quote => visitor.visit_str(&self.lexer.str_string().map_err(Str)?),
             Token::DigitOrMinus => {
                 let (n, parts) = self.lexer.num_string().map_err(Num)?;
@@ -203,5 +204,5 @@ impl<'de, 'a, L: LexAlloc + 'de> de::MapAccess<'de> for CommaSeparated<'a, L> {
 
 /// Deserialise a single value.
 pub fn exactly_one<'a, T: Deserialize<'a>, L: LexAlloc + 'a>(lexer: &mut L) -> Result<T> {
-    lexer.exactly_one(|token, lexer| T::deserialize(TokenLexer { token, lexer }))
+    lexer.exactly_one(L::ws_token, |token, lexer| T::deserialize(TokenLexer { token, lexer }))
 }

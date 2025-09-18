@@ -204,5 +204,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::MapAccess<'de> for CommaSeparated<'a, L> {
 
 /// Deserialise a single value.
 pub fn exactly_one<'a, T: Deserialize<'a>, L: LexAlloc + 'a>(lexer: &mut L) -> Result<T> {
-    lexer.exactly_one(L::ws_token, |token, lexer| T::deserialize(TokenLexer { token, lexer }))
+    lexer.exactly_one(L::ws_token, |token, lexer| {
+        T::deserialize(TokenLexer { token, lexer })
+    })
 }

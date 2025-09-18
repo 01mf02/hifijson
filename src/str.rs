@@ -26,7 +26,7 @@
 //!
 //! When in doubt, go for `LexAlloc`.
 
-use crate::escape::{self, Escape, Hex};
+use crate::escape;
 use crate::{Read, Write};
 use core::fmt;
 use core::ops::Deref;
@@ -107,7 +107,7 @@ struct State {
     /// Are we in an escape sequence, and if so,
     /// are we in a hex escape sequence, and if so,
     /// at which position in the hex code are we?
-    escape: Option<Option<Hex<u8, u8>>>,
+    escape: Option<Option<u8>>,
     /// Did we encounter an error so far?
     error: Option<Error>,
 }
@@ -121,22 +121,21 @@ impl State {
             // are we in a hex escape sequence (started by "\u" or "\x")?
             if let Some(hex_pos) = escape {
                 if escape::decode_hex(c).is_none() {
-                    self.error = Some(escape::Error::InvalidHex.into());
+                    self.error = Some(escape::Error::InvalidHex(c).into());
+                } else if *hex_pos < 3 {
+                    *hex_pos += 1
                 } else {
-                    match hex_pos {
-                        Hex::Unicode(pos) if *pos < 3 => *pos += 1,
-                        Hex::Byte(pos) if *pos < 1 => *pos += 1,
-                        _ => self.escape = None,
-                    }
+                    self.escape = None
                 }
             } else {
                 // we are about to enter a new escape sequence,
                 // let us see which kind of sequence ...
-                match Escape::try_from(c) {
-                    Some(Escape::Hex(Hex::Unicode(_))) => *escape = Some(Hex::Unicode(0)),
-                    Some(Escape::Hex(Hex::Byte(_))) => *escape = Some(Hex::Byte(0)),
-                    Some(_) => self.escape = None,
-                    None => self.error = Some(escape::Error::UnknownKind.into()),
+                if c == b'u' {
+                    *escape = Some(0)
+                } else if escape::Lit::try_from(c).is_some() {
+                    self.escape = None
+                } else {
+                    self.error = Some(escape::Error::UnknownKind(c).into())
                 }
             }
         } else {
@@ -193,7 +192,7 @@ pub trait LexWrite: escape::Lex + Read + Write {
         &mut self,
         mut out: T,
         on_string: impl Fn(&mut Self::Bytes, &mut T) -> Result<(), E>,
-        on_escape: impl Fn(&mut Self, Escape, &mut T) -> Result<(), E>,
+        on_escape: impl Fn(&mut Self, &mut T) -> Result<(), E>,
     ) -> Result<T, E> {
         fn string_end(c: u8) -> bool {
             matches!(c, b'\\' | b'"' | 0..=0x1F)
@@ -209,8 +208,7 @@ pub trait LexWrite: escape::Lex + Read + Write {
             _ => unreachable!(),
         }
         loop {
-            let escape = self.escape().map_err(Error::Escape)?;
-            on_escape(self, escape, &mut out)?;
+            on_escape(self, &mut out)?;
             self.write_until(&mut bytes, string_end);
             on_string(&mut bytes, &mut out)?;
             match self.take_next().ok_or(Error::Eof)? {
@@ -251,9 +249,10 @@ impl<'a> LexAlloc for crate::SliceLexer<'a> {
             Ok::<_, Error>(())
         };
         use crate::escape::Lex;
-        self.str_fold(Cow::Borrowed(""), on_string, |lexer, escape, out| {
-            let c = lexer.escape_char(escape)?;
-            out.to_mut().push(c.as_unicode().map_err(Error::Byte)?);
+        self.str_fold(Cow::Borrowed(""), on_string, |lexer, out| {
+            let next = lexer.take_next().ok_or(escape::Error::Eof)?;
+            out.to_mut()
+                .push(lexer.escape(next).map_err(Error::Escape)?);
             Ok(())
         })
     }
@@ -278,9 +277,9 @@ impl<E, I: Iterator<Item = Result<u8, E>>> LexAlloc for crate::IterLexer<E, I> {
             Ok::<_, Error>(())
         };
         use crate::escape::Lex;
-        self.str_fold(Self::Str::new(), on_string, |lexer, escape, out| {
-            let c = lexer.escape_char(escape)?;
-            out.push(c.as_unicode().map_err(Error::Byte)?);
+        self.str_fold(Self::Str::new(), on_string, |lexer, out| {
+            let next = lexer.take_next().ok_or(escape::Error::Eof)?;
+            out.push(lexer.escape(next).map_err(Error::Escape)?);
             Ok(())
         })
     }

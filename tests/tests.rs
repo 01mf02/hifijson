@@ -69,13 +69,13 @@ fn parse_binary_string<L: LexAlloc>(token: Token, lexer: &mut L) -> Result<Vec<u
         out.extend_from_slice(bytes);
         Ok(())
     };
-    lexer.str_fold(Vec::new(), on_string, |lexer, escape, out| {
-        match lexer.escape_char(escape).map_err(str::Error::Escape)? {
-            escape::Hex::Unicode(u) => out.extend(u.encode_utf8(&mut [0; 4]).as_bytes()),
-            escape::Hex::Byte(b) => out.push(b),
-        }
+    let s = lexer.str_fold(Vec::new(), on_string, |lexer, out| {
+        let next = lexer.take_next().ok_or(escape::Error::Eof)?;
+        let c = lexer.escape(next).map_err(str::Error::Escape)?;
+        out.extend(c.encode_utf8(&mut [0; 4]).as_bytes());
         Ok(())
-    })
+    });
+    s.map_err(Error::Str)
 }
 
 fn fails_with(slice: &[u8], e: Error) {
@@ -155,8 +155,8 @@ fn strings() -> Result<(), Error> {
 
     let escape = |e| Error::Str(str::Error::Escape(e));
 
-    fails_with(br#""\X""#, escape(escape::Error::UnknownKind));
-    fails_with(br#""\U""#, escape(escape::Error::UnknownKind));
+    fails_with(br#""\X""#, escape(escape::Error::UnknownKind(b'X')));
+    fails_with(br#""\U""#, escape(escape::Error::UnknownKind(b'U')));
     fails_with(br#""\"#, escape(escape::Error::Eof));
     fails_with(br#""\u00"#, escape(escape::Error::Eof));
 
@@ -212,7 +212,6 @@ fn objects() -> Result<(), Error> {
 fn binary_strings() -> Result<(), Error> {
     parses_to_binary_string(br#""aaa\nbbb\nccc""#, b"aaa\nbbb\nccc")?;
     parses_to_binary_string(b"\"aaa\xffbbb\xffccc\"", b"aaa\xffbbb\xffccc")?;
-    parses_to_binary_string(br#""a\xffb""#, b"a\xffb")?;
     parses_to_binary_string(
         b"\"aaa\\u2200\xe2\x88\x80ccc\"",
         "aaa\u{2200}\u{2200}ccc".as_bytes(),

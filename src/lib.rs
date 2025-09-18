@@ -163,20 +163,17 @@
 //! Unlike the previous examples, it requires only constant memory!
 //!
 //! ~~~
-//! use hifijson::{Token, Error};
+//! use hifijson::{Error, Expect, Lex, Token};
 //!
 //! /// Recursively count the number of values in the value starting with `token`.
 //! ///
 //! /// The `Lex` trait indicates that this lexer does *not* allocate memory.
-//! fn count<L: hifijson::Lex>(token: Token, lexer: &mut L) -> Result<usize, Error> {
+//! fn count<L: Lex>(token: Token, lexer: &mut L) -> Result<usize, Error> {
 //!     match token {
 //!         // the JSON values "null", "true", and "false"
-//!         Token::Letter => Ok(lexer.null_or_bool().map(|_| 1).ok_or(hifijson::Expect::Value)?),
-//!
-//!         // the lexer reads only the first character of numbers and strings,
-//!         // therefore, we have to consume the rest ourselves
-//!         Token::Digit => Ok(lexer.num_ignore().map(|_| 1)?),
-//!         Token::Minus => count(Token::Digit, lexer),
+//!         Token::Other(b'a'..=b'z') => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
+//!         Token::Other(b'0'..=b'9') => Ok(lexer.num_ignore().map(|_| 1)?),
+//!         Token::Minus => count(Token::Other(b'0'), lexer),
 //!         Token::Quote => Ok(lexer.str_ignore().map(|_| 1)?),
 //!
 //!         // start of array ('[')
@@ -199,17 +196,17 @@
 //!                 /// read the key, ignoring it, and then the ':' after it
 //!                 lexer.str_colon(token, L::ws_token, |lexer| lexer.str_ignore().map_err(Error::Str))?;
 //!                 /// now read the token after ':'
-//!                 let token = lexer.ws_token().ok_or(hifijson::Expect::Value)?;
+//!                 let token = lexer.ws_token().ok_or(Expect::Value)?;
 //!                 sum += count(token, lexer)?;
 //!                 Ok::<_, Error>(())
 //!             })?;
 //!             Ok(sum)
 //!         }
-//!         _ => Err(hifijson::Expect::Value)?,
+//!         _ => Err(Expect::Value)?,
 //!     }
 //! }
 //!
-//! fn process<L: hifijson::Lex>(mut lexer: L) -> Result<usize, hifijson::Error> {
+//! fn process<L: Lex>(mut lexer: L) -> Result<usize, Error> {
 //!     lexer.exactly_one(L::ws_token, |token, lexer| count(token, lexer))
 //! }
 //!

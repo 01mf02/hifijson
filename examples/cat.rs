@@ -132,16 +132,16 @@ fn filter<L: LexAlloc>(
 
 fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), Error> {
     match token {
-        Token::Letter => print(match lexer.null_or_bool().ok_or(Expect::Value)? {
+        Token::Other(b'a'..=b'z') => print(match lexer.null_or_bool().ok_or(Expect::Value)? {
             None => b"null",
             Some(true) => b"true",
             Some(false) => b"false",
         }),
         Token::Minus => {
             print(b"-");
-            lex(Token::Digit, lexer, print)?
+            lex(Token::Other(b'0'), lexer, print)?
         }
-        Token::Digit => {
+        Token::Other(b'0'..=b'9') => {
             let mut num = Default::default();
             let _pos = lexer.num_bytes(&mut num)?;
             print(&num)

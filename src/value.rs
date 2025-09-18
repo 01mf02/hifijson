@@ -102,9 +102,11 @@ fn parse<L: LexAlloc>(
 ) -> Result<Value<L::Num, L::Str>, Error> {
     let nob = |o: Option<bool>| o.map(Value::Bool).unwrap_or(Value::Null);
     match token {
-        Token::Letter => Ok(lexer.null_or_bool().map(nob).ok_or(token::Expect::Value)?),
+        Token::Other(b'a'..=b'z') => {
+            Ok(lexer.null_or_bool().map(nob).ok_or(token::Expect::Value)?)
+        }
         Token::Minus => Ok(Value::Number(Sign::Neg, lexer.num_string()?)),
-        Token::Digit => Ok(Value::Number(Sign::Pos, lexer.num_string()?)),
+        Token::Other(b'0'..=b'9') => Ok(Value::Number(Sign::Pos, lexer.num_string()?)),
         Token::Quote => Ok(Value::String(lexer.str_string()?)),
         Token::LSquare => Ok(Value::Array({
             let mut arr = Vec::new();

@@ -3,9 +3,8 @@ use hifijson::*;
 /// Count the number of parsed values.
 fn count<L: Lex>(token: Token, lexer: &mut L) -> Result<usize, hifijson::Error> {
     match token {
-        Token::Letter => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
-        Token::Digit => Ok(lexer.num_ignore().map(|_| 1)?),
-        Token::Minus => count(Token::Digit, lexer),
+        Token::Other(b'a'..=b'z') => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
+        Token::Other(b'0'..=b'9') | Token::Minus => Ok(lexer.num_ignore().map(|_| 1)?),
         Token::Quote => Ok(lexer.str_ignore().map(|_| 1)?),
         Token::LSquare => {
             let mut sum = 1;

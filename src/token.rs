@@ -34,8 +34,6 @@ impl core::fmt::Display for Expect {
 /// JSON lexer token.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
-    /// ASCII letter
-    Letter,
     /// `,`
     Comma,
     /// `:`
@@ -52,36 +50,29 @@ pub enum Token {
     Quote,
     /// `-`
     Minus,
-    /// `0`--`9`
-    Digit,
     /// anything else
-    Error,
+    Other(u8),
 }
 
 impl core::fmt::Display for Token {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        self.as_str().fmt(f)
+        use Token::*;
+        match self {
+            Comma => ',',
+            Colon => ':',
+            LSquare => '[',
+            RSquare => ']',
+            LCurly => '{',
+            RCurly => '}',
+            Quote => '"',
+            Minus => '-',
+            Other(b) => char::from(*b),
+        }
+        .fmt(f)
     }
 }
 
 impl Token {
-    fn as_str(&self) -> &'static str {
-        use Token::*;
-        match self {
-            Comma => ",",
-            Colon => ":",
-            LSquare => "[",
-            RSquare => "]",
-            LCurly => "{",
-            RCurly => "}",
-            Quote => "\"",
-            Minus => "-",
-            Letter => "letter",
-            Digit => "digit",
-            Error => "unknown token",
-        }
-    }
-
     /// Return `Ok(())` if `self` equals `token`, else return `Err(err)`.
     pub fn equals_or<E>(&self, token: Token, err: E) -> Result<(), E> {
         if *self == token {
@@ -124,10 +115,6 @@ pub trait Lex: crate::Read {
     /// For all other tokens, like [`Token::Letter`], the character is preserved.
     fn token(&mut self, c: u8) -> Token {
         let token = match c {
-            // it is important to `return` here in order not to take the next byte,
-            // like we do for the regular, single-character tokens
-            b'a'..=b'z' | b'A'..=b'Z' => return Token::Letter,
-            b'0'..=b'9' => return Token::Digit,
             b'-' => Token::Minus,
             b'"' => Token::Quote,
             b'[' => Token::LSquare,
@@ -136,7 +123,9 @@ pub trait Lex: crate::Read {
             b'}' => Token::RCurly,
             b',' => Token::Comma,
             b':' => Token::Colon,
-            _ => return Token::Error,
+            // it is important to `return` here in order not to take the next byte,
+            // like we do for the regular, single-character tokens
+            _ => return Token::Other(c),
         };
         self.take_next();
         token

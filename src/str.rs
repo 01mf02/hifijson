@@ -135,7 +135,7 @@ impl State {
                 } else if escape::Lit::try_from(c).is_some() {
                     self.escape = None
                 } else {
-                    self.error = Some(escape::Error::UnknownKind(c).into())
+                    self.error = Some(escape::Error::InvalidKind(c).into())
                 }
             }
         } else {

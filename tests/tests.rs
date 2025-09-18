@@ -155,8 +155,8 @@ fn strings() -> Result<(), Error> {
 
     let escape = |e| Error::Str(str::Error::Escape(e));
 
-    fails_with(br#""\X""#, escape(escape::Error::UnknownKind(b'X')));
-    fails_with(br#""\U""#, escape(escape::Error::UnknownKind(b'U')));
+    fails_with(br#""\X""#, escape(escape::Error::InvalidKind(b'X')));
+    fails_with(br#""\U""#, escape(escape::Error::InvalidKind(b'U')));
     fails_with(br#""\"#, escape(escape::Error::Eof));
     fails_with(br#""\u00"#, escape(escape::Error::Eof));
 

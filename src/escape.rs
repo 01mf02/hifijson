@@ -69,7 +69,7 @@ pub(crate) fn decode_hex(val: u8) -> Option<u8> {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// `\x` or `\U`
-    UnknownKind(u8),
+    InvalidKind(u8),
     /// `\u000X`
     InvalidHex(u8),
     /// `\uDC37`
@@ -84,7 +84,7 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         use Error::*;
         match self {
-            UnknownKind(b) => write!(f, "unknown escape character {}", char::from(*b)),
+            InvalidKind(b) => write!(f, "invalid escape character {}", char::from(*b)),
             InvalidHex(b) => write!(f, "invalid hexadecimal character {}", char::from(*b)),
             InvalidChar(c) => write!(f, "invalid character with index {}", c),
             ExpectedLowSurrogate => "expected low surrogate".fmt(f),
@@ -119,7 +119,7 @@ pub trait Lex: Read {
             return char::from_u32(u).ok_or(Error::InvalidChar(u));
         }
         Lit::try_from(c)
-            .ok_or(Error::UnknownKind(c))
+            .ok_or(Error::InvalidKind(c))
             .map(|lit| char::from(lit.as_u8()))
     }
 

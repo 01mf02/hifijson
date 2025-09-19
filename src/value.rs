@@ -13,13 +13,37 @@ pub enum Value<Num, Str> {
     /// `true` or `false`
     Bool(bool),
     /// string representation of a number with positional information
-    Number((Num, num::Parts)),
+    Number(Sign, (Num, num::Parts)),
     /// string
     String(Str),
     /// array
     Array(Vec<Self>),
     /// mapping from strings to values
     Object(Vec<(Str, Self)>),
+}
+
+/// Sign of a number.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Sign {
+    /// positive
+    Pos,
+    /// negative
+    Neg,
+}
+
+impl Sign {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Sign::Pos => "",
+            Sign::Neg => "-",
+        }
+    }
+}
+
+impl fmt::Display for Sign {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.as_str().fmt(f)
+    }
 }
 
 impl<NumL: PartialEq<NumR>, NumR, StrL: PartialEq<StrR>, StrR> PartialEq<Value<NumR, StrR>>
@@ -30,7 +54,7 @@ impl<NumL: PartialEq<NumR>, NumR, StrL: PartialEq<StrR>, StrR> PartialEq<Value<N
         match (self, other) {
             (Null, Null) => true,
             (Bool(l), Bool(r)) => l == r,
-            (Number((nl, pl)), Number((nr, pr))) => nl == nr && pl == pr,
+            (Number(sl, (nl, pl)), Number(sr, (nr, pr))) => sl == sr && nl == nr && pl == pr,
             (String(l), String(r)) => l == r,
             (Array(l), Array(r)) => l == r,
             (Object(l), Object(r)) => {
@@ -48,7 +72,7 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
         match self {
             Null => "null".fmt(f),
             Bool(b) => b.fmt(f),
-            Number((n, _)) => n.fmt(f),
+            Number(sign, (n, _)) => write!(f, "{sign}{}", &**n),
             String(s) => str::Display::new(&**s).fmt(f),
             Array(a) => {
                 "[".fmt(f)?;
@@ -76,15 +100,17 @@ fn parse<L: LexAlloc>(
     lexer: &mut L,
     f: impl Fn(Token, &mut L) -> Result<Value<L::Num, L::Str>, Error>,
 ) -> Result<Value<L::Num, L::Str>, Error> {
+    let nob = |o: Option<bool>| o.map(Value::Bool).unwrap_or(Value::Null);
     match token {
-        Token::Null => Ok(Value::Null),
-        Token::True => Ok(Value::Bool(true)),
-        Token::False => Ok(Value::Bool(false)),
-        Token::DigitOrMinus => Ok(Value::Number(lexer.num_string()?)),
+        Token::Other(b'a'..=b'z') => {
+            Ok(lexer.null_or_bool().map(nob).ok_or(token::Expect::Value)?)
+        }
+        Token::Minus => Ok(Value::Number(Sign::Neg, lexer.num_string()?)),
+        Token::Other(b'0'..=b'9') => Ok(Value::Number(Sign::Pos, lexer.num_string()?)),
         Token::Quote => Ok(Value::String(lexer.str_string()?)),
         Token::LSquare => Ok(Value::Array({
             let mut arr = Vec::new();
-            lexer.seq(Token::RSquare, |token, lexer| {
+            lexer.seq(Token::RSquare, L::ws_token, |token, lexer| {
                 arr.push(f(token, lexer)?);
                 Ok::<_, Error>(())
             })?;
@@ -92,8 +118,10 @@ fn parse<L: LexAlloc>(
         })),
         Token::LCurly => Ok(Value::Object({
             let mut obj = Vec::new();
-            lexer.seq(Token::RCurly, |token, lexer| {
-                let key = lexer.str_colon(token, |lexer| lexer.str_string().map_err(Error::Str))?;
+            lexer.seq(Token::RCurly, L::ws_token, |token, lexer| {
+                let key = lexer.str_colon(token, L::ws_token, |lexer| {
+                    lexer.str_string().map_err(Error::Str)
+                })?;
                 let value = f(lexer.ws_token().ok_or(token::Expect::Value)?, lexer)?;
                 obj.push((key, value));
                 Ok::<_, Error>(())

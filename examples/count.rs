@@ -1,14 +1,14 @@
 use hifijson::*;
 
 /// Count the number of parsed values.
-fn count(token: Token, lexer: &mut impl Lex) -> Result<usize, hifijson::Error> {
+fn count<L: Lex>(token: Token, lexer: &mut L) -> Result<usize, hifijson::Error> {
     match token {
-        Token::Null | Token::True | Token::False => Ok(1),
-        Token::DigitOrMinus => Ok(lexer.num_ignore().map(|_| 1)?),
+        Token::Other(b'a'..=b'z') => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
+        Token::Other(b'0'..=b'9') | Token::Minus => Ok(lexer.num_ignore().map(|_| 1)?),
         Token::Quote => Ok(lexer.str_ignore().map(|_| 1)?),
         Token::LSquare => {
             let mut sum = 1;
-            lexer.seq(Token::RSquare, |token, lexer| {
+            lexer.seq(Token::RSquare, L::ws_token, |token, lexer| {
                 sum += count(token, lexer)?;
                 Ok::<_, hifijson::Error>(())
             })?;
@@ -16,20 +16,22 @@ fn count(token: Token, lexer: &mut impl Lex) -> Result<usize, hifijson::Error> {
         }
         Token::LCurly => {
             let mut sum = 1;
-            lexer.seq(Token::RCurly, |token, lexer| {
-                lexer.str_colon(token, |lexer| lexer.str_ignore().map_err(Error::Str))?;
+            lexer.seq(Token::RCurly, L::ws_token, |token, lexer| {
+                lexer.str_colon(token, L::ws_token, |lexer| {
+                    lexer.str_ignore().map_err(Error::Str)
+                })?;
                 sum += count(lexer.ws_token().ok_or(Expect::Value)?, lexer)?;
                 Ok::<_, hifijson::Error>(())
             })?;
             Ok(sum)
         }
 
-        _ => Err(hifijson::Expect::Value)?,
+        _ => Err(Expect::Value)?,
     }
 }
 
-fn process(mut lexer: impl Lex) -> Result<usize, hifijson::Error> {
-    lexer.exactly_one(|token, lexer| count(token, lexer))
+fn process<L: Lex>(mut lexer: L) -> Result<usize, hifijson::Error> {
+    lexer.exactly_one(L::ws_token, |token, lexer| count(token, lexer))
 }
 
 fn main() {

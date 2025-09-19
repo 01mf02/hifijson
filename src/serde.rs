@@ -64,7 +64,13 @@ macro_rules! deserialize_number {
     ($deserialize:ident, $visit:ident) => {
         fn $deserialize<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
             let (n, _parts) = self.lexer.num_string().map_err(crate::Error::Num)?;
-            visitor.$visit(parse_number(&n)?)
+            let number = if self.token == Token::Minus {
+                // TODO: avoid allocation here and below
+                &*alloc::format!("-{}", &*n)
+            } else {
+                &*n
+            };
+            visitor.$visit(parse_number(number)?)
         }
     };
 }
@@ -78,22 +84,24 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
     {
         use crate::Error::{Num, Str};
         match self.token {
-            Token::Null => visitor.visit_unit(),
-            Token::True => visitor.visit_bool(true),
-            Token::False => visitor.visit_bool(false),
-            Token::Quote => visitor.visit_str(&self.lexer.str_string().map_err(Str)?),
-            Token::DigitOrMinus => {
+            Token::Other(b'a'..=b'z') => match self.lexer.null_or_bool().ok_or(Expect::Value)? {
+                None => visitor.visit_unit(),
+                Some(b) => visitor.visit_bool(b),
+            },
+            Token::Other(b'0'..=b'9') | Token::Minus => {
                 let (n, parts) = self.lexer.num_string().map_err(Num)?;
                 if parts.is_int() {
-                    if n.starts_with('-') {
-                        visitor.visit_i64(parse_number(&n)?)
+                    if self.token == Token::Minus {
+                        visitor.visit_i64(parse_number(&alloc::format!("-{}", &*n))?)
                     } else {
                         visitor.visit_u64(parse_number(&n)?)
                     }
                 } else {
-                    visitor.visit_f64(parse_number(&n)?)
+                    let f: f64 = parse_number(&n)?;
+                    visitor.visit_f64(if self.token == Token::Minus { -f } else { f })
                 }
             }
+            Token::Quote => visitor.visit_str(&self.lexer.str_string().map_err(Str)?),
             Token::LSquare => visitor.visit_seq(CommaSeparated::new(self.lexer)),
             Token::LCurly => visitor.visit_map(CommaSeparated::new(self.lexer)),
             _ => Err(Expect::Value)?,
@@ -203,5 +211,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::MapAccess<'de> for CommaSeparated<'a, L> {
 
 /// Deserialise a single value.
 pub fn exactly_one<'a, T: Deserialize<'a>, L: LexAlloc + 'a>(lexer: &mut L) -> Result<T> {
-    lexer.exactly_one(|token, lexer| T::deserialize(TokenLexer { token, lexer }))
+    lexer.exactly_one(L::ws_token, |token, lexer| {
+        T::deserialize(TokenLexer { token, lexer })
+    })
 }

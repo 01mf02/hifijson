@@ -116,7 +116,7 @@
 //! // now we are going -- we try to
 //! // obtain exactly one JSON value from the lexer and
 //! // parse it to a value, allowing for arbitrarily deep (unbounded) nesting
-//! let value = lexer.exactly_one(|token, lexer| hifijson::value::parse_unbounded(token, lexer));
+//! let value = lexer.exactly_one(Lex::ws_token, |token, lexer| hifijson::value::parse_unbounded(token, lexer));
 //! let value = value.expect("parse");
 //!
 //! // yay, we got an array!
@@ -137,8 +137,8 @@
 //! /// Parse a single JSON value and print it.
 //! ///
 //! /// Note that the `LexAlloc` trait indicates that this lexer allocates memory.
-//! fn process(mut lexer: impl hifijson::LexAlloc) {
-//!     let value = lexer.exactly_one(|token, lexer| hifijson::value::parse_unbounded(token, lexer));
+//! fn process<L: hifijson::LexAlloc>(mut lexer: L) {
+//!     let value = lexer.exactly_one(L::ws_token, |token, lexer| hifijson::value::parse_unbounded(token, lexer));
 //!     let value = value.expect("parse");
 //!     println!("{}", value);
 //! }
@@ -163,19 +163,17 @@
 //! Unlike the previous examples, it requires only constant memory!
 //!
 //! ~~~
-//! use hifijson::{Token, Error};
+//! use hifijson::{Error, Expect, Lex, Token};
 //!
 //! /// Recursively count the number of values in the value starting with `token`.
 //! ///
 //! /// The `Lex` trait indicates that this lexer does *not* allocate memory.
-//! fn count(token: Token, lexer: &mut impl hifijson::Lex) -> Result<usize, Error> {
+//! fn count<L: Lex>(token: Token, lexer: &mut L) -> Result<usize, Error> {
 //!     match token {
 //!         // the JSON values "null", "true", and "false"
-//!         Token::Null | Token::True | Token::False => Ok(1),
-//!
-//!         // the lexer reads only the first character of numbers and strings,
-//!         // therefore, we have to consume the rest ourselves
-//!         Token::DigitOrMinus => Ok(lexer.num_ignore().map(|_| 1)?),
+//!         Token::Other(b'a'..=b'z') => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
+//!         Token::Other(b'0'..=b'9') => Ok(lexer.num_ignore().map(|_| 1)?),
+//!         Token::Minus => count(Token::Other(b'0'), lexer),
 //!         Token::Quote => Ok(lexer.str_ignore().map(|_| 1)?),
 //!
 //!         // start of array ('[')
@@ -183,7 +181,7 @@
 //!             // an array is a value itself, so start with 1
 //!             let mut sum = 1;
 //!             // perform the following for every item of the array
-//!             lexer.seq(Token::RSquare, |token, lexer| {
+//!             lexer.seq(Token::RSquare, L::ws_token, |token, lexer| {
 //!                 sum += count(token, lexer)?;
 //!                 Ok::<_, Error>(())
 //!             })?;
@@ -194,22 +192,22 @@
 //!         Token::LCurly => {
 //!             let mut sum = 1;
 //!             // perform the following for every key-value pair of the object
-//!             lexer.seq(Token::RCurly, |token, lexer| {
+//!             lexer.seq(Token::RCurly, L::ws_token, |token, lexer| {
 //!                 /// read the key, ignoring it, and then the ':' after it
-//!                 lexer.str_colon(token, |lexer| lexer.str_ignore().map_err(Error::Str))?;
+//!                 lexer.str_colon(token, L::ws_token, |lexer| lexer.str_ignore().map_err(Error::Str))?;
 //!                 /// now read the token after ':'
-//!                 let token = lexer.ws_token().ok_or(hifijson::Expect::Value)?;
+//!                 let token = lexer.ws_token().ok_or(Expect::Value)?;
 //!                 sum += count(token, lexer)?;
 //!                 Ok::<_, Error>(())
 //!             })?;
 //!             Ok(sum)
 //!         }
-//!         _ => Err(hifijson::Expect::Value)?,
+//!         _ => Err(Expect::Value)?,
 //!     }
 //! }
 //!
-//! fn process(mut lexer: impl hifijson::Lex) -> Result<usize, hifijson::Error> {
-//!     lexer.exactly_one(|token, lexer| count(token, lexer))
+//! fn process<L: Lex>(mut lexer: L) -> Result<usize, Error> {
+//!     lexer.exactly_one(L::ws_token, |token, lexer| count(token, lexer))
 //! }
 //!
 //! let json = br#"[null, true, false, "hello", 0, 3.1415, [1, 2], {"x": 1, "y": 2}]"#;

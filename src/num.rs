@@ -1,4 +1,4 @@
-//! Numbers.
+//! Positive numbers.
 
 use crate::{Read, Write};
 use core::num::NonZeroUsize;
@@ -36,7 +36,7 @@ impl Parts {
 
 /// Number lexing, ignoring the number.
 pub trait Lex: Read {
-    /// Perform `f` for every digit read.
+    /// Perform `f` for every digit read and return the number of read bytes.
     fn digits_foreach(&mut self, mut f: impl FnMut(u8)) -> usize {
         let mut len = 0;
         while let Some(digit @ (b'0'..=b'9')) = self.peek_next() {
@@ -57,15 +57,13 @@ pub trait Lex: Read {
         let mut pos = 0;
         let mut parts = Parts::default();
 
-        match self.peek_next() {
+        match self.take_next() {
             Some(b'0') => {
                 f(b'0');
-                self.take_next();
                 pos += 1;
             }
             Some(digit @ b'1'..=b'9') => {
                 f(digit);
-                self.take_next();
                 pos += 1 + self.digits_foreach(&mut f);
             }
             _ => return Err(Error::ExpectedDigit),

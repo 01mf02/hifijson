@@ -62,8 +62,6 @@ pub enum Error {
     Control,
     /// escape sequence (starting with `'\n'`) could not be decoded
     Escape(escape::Error),
-    /// an `\xHH`-escaped byte was encountered
-    Byte(u8),
     /// string was not terminated
     Eof,
     /// string is not in UTF-8
@@ -94,7 +92,6 @@ impl core::fmt::Display for Error {
         match self {
             Control => "invalid string control character".fmt(f),
             Escape(e) => e.fmt(f),
-            Byte(b) => write!(f, "invalid byte escape {b:02x}"),
             Eof => "unterminated string".fmt(f),
             Utf8(e) => e.fmt(f),
         }
@@ -105,7 +102,7 @@ impl core::fmt::Display for Error {
 #[derive(Default)]
 struct State {
     /// Are we in an escape sequence, and if so,
-    /// are we in a hex escape sequence, and if so,
+    /// are we in a unicode escape sequence, and if so,
     /// at which position in the hex code are we?
     escape: Option<Option<u8>>,
     /// Did we encounter an error so far?
@@ -117,11 +114,11 @@ impl State {
     /// return whether the string is finished or an error occurred.
     fn process(&mut self, c: u8) -> bool {
         // are we in an escape sequence (started by '\')?
-        if let Some(escape) = &mut self.escape {
-            // are we in a hex escape sequence (started by "\u" or "\x")?
-            if let Some(hex_pos) = escape {
+        if let Some(unicode) = &mut self.escape {
+            // are we in a Unicode escape sequence (started by "\u")?
+            if let Some(hex_pos) = unicode {
                 if escape::decode_hex(c).is_none() {
-                    self.error = Some(escape::Error::InvalidHex(c).into());
+                    self.error = Some(escape::Error::InvalidHex(c).into())
                 } else if *hex_pos < 3 {
                     *hex_pos += 1
                 } else {
@@ -131,7 +128,7 @@ impl State {
                 // we are about to enter a new escape sequence,
                 // let us see which kind of sequence ...
                 if c == b'u' {
-                    *escape = Some(0)
+                    *unicode = Some(0)
                 } else if escape::Lit::try_from(c).is_some() {
                     self.escape = None
                 } else {

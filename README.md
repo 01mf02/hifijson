@@ -83,17 +83,17 @@ This gives `hifijson` an advantage for the "pi" and "hello" benchmarks,
 but a disadvantage for the "hello-world" benchmark.
 
 | Benchmark   |    Size | `serde_json` | `hifijson` |
-| ----------- | ------: | -----------: | ---------: |
-| null        |  47 MiB |       549 ms |     736 ms |
-| pi          |  66 MiB |      2484 ms |    1383 ms |
-| hello       |  76 MiB |      1762 ms |    1334 ms |
-| hello-world | 143 MiB |      1786 ms |    2933 ms |
-| arr         |  28 MiB |       970 ms |    1056 ms |
-| tree        |  39 MiB |      2221 ms |    2822 ms |
+|-------------|--------:|-------------:|-----------:|
+| null        |  47 MiB |       241 ms |     317 ms |
+| pi          |  66 MiB |      1138 ms |     648 ms |
+| hello       |  76 MiB |       702 ms |     543 ms |
+| hello-world | 143 MiB |       816 ms |    1133 ms |
+| arr         |  28 MiB |       473 ms |     387 ms |
+| tree        |  39 MiB |      1413 ms |    1601 ms |
 
 The results are mixed: While `hifijson`
-is faster on numbers and strings not containing escape sequences, it
-is slower on keywords (`null`, `true`, `false`) and deeply nested arrays.
+is faster on numbers, strings not containing escape sequences, and deeply nested arrays, it
+is slower on keywords (`null`, `true`, `false`) and strings with escape sequences.
 Also note that `serde_json` parses numbers much faster without `arbitrary_precision`.
 
 Suggestions on how to improve `hifijson`'s performance are welcome. :)

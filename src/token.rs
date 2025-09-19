@@ -112,7 +112,7 @@ pub trait Lex: crate::Read {
     /// Only when the token consists of a single character that can be
     /// reconstructed losslessly from the token, such as `[` or `:`,
     /// then the current character is consumed.
-    /// For all other tokens, like [`Token::Letter`], the character is preserved.
+    /// All other non-token characters are preserved, i.e. input is not advanced.
     fn token(&mut self, c: u8) -> Token {
         let token = match c {
             b'-' => Token::Minus,

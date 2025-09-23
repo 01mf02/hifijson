@@ -13,8 +13,7 @@ use crate::{Expect, Lex, LexAlloc, Token};
 
 use alloc::string::{String, ToString};
 use core::fmt;
-use serde::de::{self, DeserializeSeed, Visitor};
-use serde::Deserialize;
+use serde::de::{self, Deserialize, DeserializeSeed, Visitor};
 
 /// Deserialisation error.
 #[derive(Debug)]

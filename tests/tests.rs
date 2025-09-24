@@ -1,24 +1,20 @@
 use core::num::NonZeroUsize;
 use hifijson::token::{Lex, Token};
-use hifijson::value::{self, Sign, Value};
+use hifijson::value::{self, Value};
 use hifijson::{escape, ignore, num, str, Error, Expect, IterLexer, LexAlloc, SliceLexer};
 
 fn boole<Num, Str>(b: bool) -> Value<Num, Str> {
     Value::Bool(b)
 }
 
-fn num<Num, Str>(sg: Sign, n: Num, dot: Option<usize>, exp: Option<usize>) -> Value<Num, Str> {
+fn num<Num, Str>(n: Num, dot: Option<usize>, exp: Option<usize>) -> Value<Num, Str> {
     let dot = dot.map(|i| NonZeroUsize::new(i).unwrap());
     let exp = exp.map(|i| NonZeroUsize::new(i).unwrap());
-    Value::Number(sg, (n, num::Parts { dot, exp }))
+    Value::Number((n, num::Parts { dot, exp }))
 }
 
-fn int<Num, Str>(sg: Sign, i: Num) -> Value<Num, Str> {
-    num(sg, i, None, None)
-}
-
-fn nat<Num, Str>(i: Num) -> Value<Num, Str> {
-    int(Sign::Pos, i)
+fn int<Num, Str>(i: Num) -> Value<Num, Str> {
+    num(i, None, None)
 }
 
 fn arr<Num, Str, const N: usize>(v: [Value<Num, Str>; N]) -> Value<Num, Str> {
@@ -115,19 +111,18 @@ fn basic() -> Result<(), Error> {
 
 #[test]
 fn numbers() -> Result<(), Error> {
-    use Sign::{Neg, Pos};
-    parses_to(b"0", nat("0"))?;
-    parses_to(b"42", nat("42"))?;
-    parses_to(b"-0", int(Neg, "0"))?;
-    parses_to(b"-42", int(Neg, "42"))?;
+    parses_to(b"0", int("0"))?;
+    parses_to(b"42", int("42"))?;
+    parses_to(b"-0", int("-0"))?;
+    parses_to(b"-42", int("-42"))?;
 
-    parses_to(b"3.14", num(Pos, "3.14", Some(1), None))?;
+    parses_to(b"3.14", num("3.14", Some(1), None))?;
 
     // speed of light in m/s
-    parses_to(b"299e6", num(Pos, "299e6", None, Some(3)))?;
+    parses_to(b"299e6", num("299e6", None, Some(3)))?;
     // now a bit more precise
-    parses_to(b"299.792e6", num(Pos, "299.792e6", Some(3), Some(7)))?;
-    parses_to(b"-1.2e3", num(Neg, "1.2e3", Some(1), Some(3)))?;
+    parses_to(b"299.792e6", num("299.792e6", Some(3), Some(7)))?;
+    parses_to(b"-1.2e3", num("-1.2e3", Some(2), Some(4)))?;
 
     fails_with(b"-", num::Error::ExpectedDigit.into());
 
@@ -179,7 +174,7 @@ fn strings() -> Result<(), Error> {
 fn arrays() -> Result<(), Error> {
     parses_to(b"[]", arr([]))?;
     parses_to(b"[false, true]", arr([boole(false), boole(true)]))?;
-    parses_to(b"[0, 1]", arr([nat("0"), nat("1")]))?;
+    parses_to(b"[0, 1]", arr([int("0"), int("1")]))?;
     parses_to(b"[[]]", arr([arr([])]))?;
 
     fails_with(b"[", Expect::ValueOrEnd.into());
@@ -193,10 +188,10 @@ fn arrays() -> Result<(), Error> {
 #[test]
 fn objects() -> Result<(), Error> {
     parses_to(b"{}", obj([]))?;
-    parses_to(br#"{"a": 0}"#, obj([("a", nat("0"))]))?;
+    parses_to(br#"{"a": 0}"#, obj([("a", int("0"))]))?;
     parses_to(
         br#"{"a": 0, "b": 1}"#,
-        obj([("a", nat("0")), ("b", nat("1"))]),
+        obj([("a", int("0")), ("b", int("1"))]),
     )?;
 
     fails_with(b"{", Expect::ValueOrEnd.into());

@@ -109,10 +109,14 @@ pub trait LexWrite: Lex + Write {
     /// String type to save numbers as.
     type Num: core::ops::Deref<Target = str>;
 
-    /// Write a number to bytes and save its parts.
-    fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<Parts, Error>;
-    /// Read a number to a string and save its parts.
-    fn num_string(&mut self) -> Result<(Self::Num, Parts), Error>;
+    /// Write a prefix and a number to bytes and save its parts.
+    ///
+    /// `prefix` must be a suffix of the previously consumed input.
+    /// Normally, you pass `b"-"` as prefix if you read "-" just before.
+    /// This allows you to include "-" in the bytes without allocation.
+    fn num_bytes(&mut self, bytes: &mut Self::Bytes, prefix: &[u8]) -> Result<Parts, Error>;
+    /// Write a prefix and a number to a string and save its parts.
+    fn num_string(&mut self, prefix: &str) -> Result<(Self::Num, Parts), Error>;
 }
 
 fn digits(s: &[u8]) -> usize {
@@ -124,8 +128,12 @@ fn digits(s: &[u8]) -> usize {
 impl<'a> LexWrite for crate::SliceLexer<'a> {
     type Num = &'a str;
 
-    fn num_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<Parts, Error> {
-        let mut pos = 0;
+    fn num_bytes(&mut self, bytes: &mut Self::Bytes, prefix: &[u8]) -> Result<Parts, Error> {
+        // rewind by prefix length
+        self.slice = &self.whole[self.offset() - prefix.len()..];
+        assert!(self.slice.starts_with(prefix));
+
+        let mut pos = prefix.len();
         let mut parts = Parts::default();
 
         let digits1 = |s| NonZeroUsize::new(digits(s)).ok_or(Error::ExpectedDigit);
@@ -160,12 +168,12 @@ impl<'a> LexWrite for crate::SliceLexer<'a> {
         }
     }
 
-    fn num_string(&mut self) -> Result<(Self::Num, Parts), Error> {
+    fn num_string(&mut self, prefix: &str) -> Result<(Self::Num, Parts), Error> {
         let mut num = Default::default();
-        let pos = self.num_bytes(&mut num)?;
+        let parts = self.num_bytes(&mut num, prefix.as_bytes())?;
         // SAFETY: conversion to UTF-8 always succeeds because
         // lex_number validates everything it writes to num
-        Ok((core::str::from_utf8(num).unwrap(), pos))
+        Ok((core::str::from_utf8(num).unwrap(), parts))
     }
 }
 
@@ -190,7 +198,8 @@ impl<E, I: Iterator<Item = Result<u8, E>>> crate::IterLexer<E, I> {
 impl<E, I: Iterator<Item = Result<u8, E>>> LexWrite for crate::IterLexer<E, I> {
     type Num = alloc::string::String;
 
-    fn num_bytes(&mut self, num: &mut Self::Bytes) -> Result<Parts, Error> {
+    fn num_bytes(&mut self, num: &mut Self::Bytes, prefix: &[u8]) -> Result<Parts, Error> {
+        num.extend(prefix);
         let mut parts = Parts::default();
 
         if self.peek_next() == Some(b'0') {
@@ -227,11 +236,11 @@ impl<E, I: Iterator<Item = Result<u8, E>>> LexWrite for crate::IterLexer<E, I> {
         }
     }
 
-    fn num_string(&mut self) -> Result<(Self::Num, Parts), Error> {
+    fn num_string(&mut self, prefix: &str) -> Result<(Self::Num, Parts), Error> {
         let mut num = Default::default();
-        let pos = self.num_bytes(&mut num)?;
+        let parts = self.num_bytes(&mut num, prefix.as_bytes())?;
         // SAFETY: conversion to UTF-8 always succeeds because
         // lex_number validates everything it writes to num
-        Ok((alloc::string::String::from_utf8(num).unwrap(), pos))
+        Ok((alloc::string::String::from_utf8(num).unwrap(), parts))
     }
 }

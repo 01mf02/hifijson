@@ -62,14 +62,9 @@ fn parse_number<T: core::str::FromStr>(n: &str) -> Result<T> {
 macro_rules! deserialize_number {
     ($deserialize:ident, $visit:ident) => {
         fn $deserialize<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-            let (n, _parts) = self.lexer.num_string().map_err(crate::Error::Num)?;
-            let number = if self.token == Token::Minus {
-                // TODO: avoid allocation here and below
-                &*alloc::format!("-{}", &*n)
-            } else {
-                &*n
-            };
-            visitor.$visit(parse_number(number)?)
+            let prefix = if self.token == Token::Minus { "-" } else { "" };
+            let (n, _parts) = self.lexer.num_string(prefix).map_err(crate::Error::Num)?;
+            visitor.$visit(parse_number(&n)?)
         }
     };
 }
@@ -88,16 +83,12 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
                 Some(b) => visitor.visit_bool(b),
             },
             Token::Other(b'0'..=b'9') | Token::Minus => {
-                let (n, parts) = self.lexer.num_string().map_err(Num)?;
-                if parts.is_int() {
-                    if self.token == Token::Minus {
-                        visitor.visit_i64(parse_number(&alloc::format!("-{}", &*n))?)
-                    } else {
-                        visitor.visit_u64(parse_number(&n)?)
-                    }
-                } else {
-                    let f: f64 = parse_number(&n)?;
-                    visitor.visit_f64(if self.token == Token::Minus { -f } else { f })
+                let prefix = if self.token == Token::Minus { "-" } else { "" };
+                let (n, parts) = self.lexer.num_string(prefix).map_err(Num)?;
+                match (parts.is_int(), prefix) {
+                    (true, "-") => visitor.visit_i64(parse_number(&n)?),
+                    (true, _) => visitor.visit_u64(parse_number(&n)?),
+                    (false, _) => visitor.visit_f64(parse_number(&n)?),
                 }
             }
             Token::Quote => visitor.visit_str(&self.lexer.str_string().map_err(Str)?),

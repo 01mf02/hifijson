@@ -25,14 +25,12 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> TryFrom<value::Value<Nu
 
     fn try_from(v: value::Value<Num, Str>) -> Result<Self, Self::Error> {
         let mut elem = Self::default();
-        use value::{Sign::Pos, Value::*};
+        use value::Value::*;
         match v {
             Array(arr) => {
                 for x in arr {
                     match x {
-                        Number(Pos, (n, parts)) if parts.is_int() => {
-                            elem.ints.push(n.parse().unwrap())
-                        }
+                        Number((n, parts)) if parts.is_int() => elem.ints.push(n.parse().unwrap()),
                         String(s) => elem.strs.push(s.to_string()),
                         _ => todo!(),
                     }
@@ -143,7 +141,7 @@ fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Resu
         }
         Token::Other(b'0'..=b'9') => {
             let mut num = Default::default();
-            let _pos = lexer.num_bytes(&mut num)?;
+            let _pos = lexer.num_bytes(&mut num, b"")?;
             print(&num)
         }
         Token::Quote => lex_string(lexer, print)?,

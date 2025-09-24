@@ -275,6 +275,7 @@ impl<T> LexAlloc for T where T: LexWrite + str::LexAlloc {}
 
 /// JSON lexer from a shared byte slice.
 pub struct SliceLexer<'a> {
+    whole: &'a [u8],
     slice: &'a [u8],
 }
 
@@ -285,7 +286,8 @@ impl<'a> SliceLexer<'a> {
     /// see for example the [memmap2](https://docs.rs/memmap2) crate.
     ///
     pub fn new(slice: &'a [u8]) -> Self {
-        Self { slice }
+        let whole = slice;
+        Self { whole, slice }
     }
 
     /// Return remaining input as a subslice of the original data.
@@ -293,6 +295,11 @@ impl<'a> SliceLexer<'a> {
     /// This can be used to find the place where an error occurred.
     pub fn as_slice(&self) -> &'a [u8] {
         self.slice
+    }
+
+    /// Number of bytes consumed so far.
+    fn offset(&self) -> usize {
+        self.slice.as_ptr() as usize - self.whole.as_ptr() as usize
     }
 }
 

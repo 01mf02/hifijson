@@ -173,7 +173,7 @@
 //!         // the JSON values "null", "true", and "false"
 //!         Token::Other(b'a'..=b'z') => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
 //!         Token::Other(b'0'..=b'9') => Ok(lexer.num_ignore().map(|_| 1)?),
-//!         Token::Minus => count(Token::Other(b'0'), lexer),
+//!         Token::Other(b'-') => count(Token::Other(b'0'), lexer.discarded()),
 //!         Token::Quote => Ok(lexer.str_ignore().map(|_| 1)?),
 //!
 //!         // start of array ('[')

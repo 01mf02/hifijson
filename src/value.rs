@@ -81,7 +81,7 @@ fn parse<L: LexAlloc>(
         Token::Other(b'a'..=b'z') => {
             Ok(lexer.null_or_bool().map(nob).ok_or(token::Expect::Value)?)
         }
-        Token::Minus => Ok(Value::Number(lexer.num_string("-")?)),
+        Token::Other(b'-') => Ok(Value::Number(lexer.discarded().num_string("-")?)),
         Token::Other(b'0'..=b'9') => Ok(Value::Number(lexer.num_string("")?)),
         Token::Quote => Ok(Value::String(lexer.str_string()?)),
         Token::LSquare => Ok(Value::Array({

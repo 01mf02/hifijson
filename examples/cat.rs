@@ -135,9 +135,9 @@ fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Resu
             Some(true) => b"true",
             Some(false) => b"false",
         }),
-        Token::Minus => {
+        Token::Other(b'-') => {
             print(b"-");
-            lex(Token::Other(b'0'), lexer, print)?
+            lex(Token::Other(b'0'), lexer.discarded(), print)?
         }
         Token::Other(b'0'..=b'9') => {
             let mut num = Default::default();

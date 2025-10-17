@@ -48,8 +48,6 @@ pub enum Token {
     RCurly,
     /// `"`
     Quote,
-    /// `-`
-    Minus,
     /// anything else
     Other(u8),
 }
@@ -65,7 +63,6 @@ impl core::fmt::Display for Token {
             LCurly => '{',
             RCurly => '}',
             Quote => '"',
-            Minus => '-',
             Other(b) => char::from(*b),
         }
         .fmt(f)
@@ -115,7 +112,6 @@ pub trait Lex: crate::Read {
     /// All other non-token characters are preserved, i.e. input is not advanced.
     fn token(&mut self, c: u8) -> Token {
         let token = match c {
-            b'-' => Token::Minus,
             b'"' => Token::Quote,
             b'[' => Token::LSquare,
             b']' => Token::RSquare,
@@ -129,6 +125,15 @@ pub trait Lex: crate::Read {
         };
         self.take_next();
         token
+    }
+
+    /// Take next token, discard it, and return mutable handle to lexer.
+    ///
+    /// This is useful in particular when parsing negative numbers,
+    /// where you want to discard `-` and immediately continue.
+    fn discarded(&mut self) -> &mut Self {
+        self.take_next();
+        self
     }
 
     /// Parse a string with given function, followed by a colon.

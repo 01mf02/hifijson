@@ -62,8 +62,11 @@ fn parse_number<T: core::str::FromStr>(n: &str) -> Result<T> {
 macro_rules! deserialize_number {
     ($deserialize:ident, $visit:ident) => {
         fn $deserialize<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-            let prefix = if self.token == Token::Minus { "-" } else { "" };
-            let (n, _parts) = self.lexer.num_string(prefix).map_err(crate::Error::Num)?;
+            let (prefix, lexer) = match self.token {
+                Token::Other(b'-') => ("-", self.lexer.discarded()),
+                _ => ("", self.lexer),
+            };
+            let (n, _parts) = lexer.num_string(prefix).map_err(crate::Error::Num)?;
             visitor.$visit(parse_number(&n)?)
         }
     };
@@ -76,21 +79,23 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
     where
         V: Visitor<'de>,
     {
+        let num = |lexer: &mut L, visitor: V, prefix: &str| {
+            let (n, parts) = lexer.num_string(prefix).map_err(Num)?;
+            match (parts.is_int(), prefix) {
+                (true, "-") => visitor.visit_i64(parse_number(&n)?),
+                (true, _) => visitor.visit_u64(parse_number(&n)?),
+                (false, _) => visitor.visit_f64(parse_number(&n)?),
+            }
+        };
+
         use crate::Error::{Num, Str};
         match self.token {
             Token::Other(b'a'..=b'z') => match self.lexer.null_or_bool().ok_or(Expect::Value)? {
                 None => visitor.visit_unit(),
                 Some(b) => visitor.visit_bool(b),
             },
-            Token::Other(b'0'..=b'9') | Token::Minus => {
-                let prefix = if self.token == Token::Minus { "-" } else { "" };
-                let (n, parts) = self.lexer.num_string(prefix).map_err(Num)?;
-                match (parts.is_int(), prefix) {
-                    (true, "-") => visitor.visit_i64(parse_number(&n)?),
-                    (true, _) => visitor.visit_u64(parse_number(&n)?),
-                    (false, _) => visitor.visit_f64(parse_number(&n)?),
-                }
-            }
+            Token::Other(b'0'..=b'9') => num(self.lexer, visitor, ""),
+            Token::Other(b'-') => num(self.lexer.discarded(), visitor, "-"),
             Token::Quote => visitor.visit_str(&self.lexer.str_string().map_err(Str)?),
             Token::LSquare => visitor.visit_seq(CommaSeparated::new(self.lexer)),
             Token::LCurly => visitor.visit_map(CommaSeparated::new(self.lexer)),

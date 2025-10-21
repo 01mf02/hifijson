@@ -39,8 +39,7 @@ impl fmt::Display for Error {
 
 impl_from!(crate::Error, Error, Error::Parse);
 impl_from!(Expect, Error, |e| Error::Parse(crate::Error::Token(e)));
-
-impl std::error::Error for Error {}
+impl_error!(Error);
 
 type Result<T> = core::result::Result<T, Error>;
 

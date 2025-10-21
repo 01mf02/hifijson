@@ -1,6 +1,6 @@
 [package]
 name = "hifijson"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 authors = ["Michael Färber <michael.faerber@gedenkt.at>"]
 description = "High-fidelity JSON lexer and parser"
@@ -16,8 +16,8 @@ std = []
 alloc = []
 
 [dependencies]
-serde = { version = "1.0.152", optional = true }
+serde = { version = "1.0", optional = true }
 
 [dev-dependencies]
 memmap2 = "0.9"
-serde_json = { version = "1.0.92", features = ["arbitrary_precision"] }
+serde_json = { version = "1.0", features = ["arbitrary_precision"] }

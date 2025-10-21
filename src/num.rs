@@ -1,6 +1,7 @@
 //! Positive numbers.
 
 use crate::{Read, Write};
+use core::fmt::{self, Display};
 use core::num::NonZeroUsize;
 
 /// Number lexing error.
@@ -13,6 +14,14 @@ pub enum Error {
     /// For example, if the lexer encounters `42abc`,
     /// it returns only `42` and does not touch `abc`.
     ExpectedDigit,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::ExpectedDigit => "expected digit".fmt(f),
+        }
+    }
 }
 
 /// Position of `.` and `e`/`E` in the string representation of a number.

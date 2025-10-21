@@ -237,10 +237,19 @@ macro_rules! impl_from {
     };
 }
 
+macro_rules! impl_error {
+    ($ty:ty) => {
+        #[cfg(feature = "std")]
+        impl std::error::Error for $ty {}
+    };
+}
+
 #[cfg(feature = "alloc")]
 extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
+
+use core::fmt::{self, Display};
 
 mod read;
 mod write;
@@ -347,19 +356,19 @@ impl_from!(num::Error, Error, Error::Num);
 impl_from!(str::Error, Error, Error::Str);
 impl_from!(token::Expect, Error, Error::Token);
 
-use core::fmt::{self, Display};
+impl_error!(Error);
+impl_error!(num::Error);
+impl_error!(escape::Error);
+impl_error!(str::Error);
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Error::*;
         match self {
             Depth => "maximal depth exceeded".fmt(f),
-            Num(num::Error::ExpectedDigit) => "expected digit".fmt(f),
+            Num(e) => e.fmt(f),
             Str(e) => e.fmt(f),
             Token(e) => write!(f, "{} expected", e),
         }
     }
 }
-
-#[cfg(feature = "std")]
-impl std::error::Error for Error {}

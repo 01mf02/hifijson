@@ -1,8 +1,8 @@
 //! Positive numbers.
 
 use crate::{Read, Write};
-use core::num::NonZeroUsize;
 use core::fmt::{self, Display};
+use core::num::NonZeroUsize;
 
 /// Number lexing error.
 #[derive(Debug, PartialEq, Eq)]

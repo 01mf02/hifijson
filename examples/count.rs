@@ -1,27 +1,36 @@
-use hifijson::*;
+//! Count the number of recursive values.
+//!
+//! Test it with:
+//!
+//!     cargo run --example count <<< '{"a": [null, 1, "b"]}'
+//!
+//! This should yield `Ok(5)` to signify that it has counted 5 values.
+//! (Object keys do not count.)
+
+use hifijson::{Error, Expect, Lex};
 
 /// Count the number of parsed values.
-fn count<L: Lex>(token: Token, lexer: &mut L) -> Result<usize, hifijson::Error> {
-    match token {
-        Token::Other(b'a'..=b'z') => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
-        Token::Other(b'0'..=b'9') => Ok(lexer.num_ignore().map(|_| 1)?),
-        Token::Other(b'-') => Ok(lexer.discarded().num_ignore().map(|_| 1)?),
-        Token::Quote => Ok(lexer.str_ignore().map(|_| 1)?),
-        Token::LSquare => {
+fn count<L: Lex>(next: u8, lexer: &mut L) -> Result<usize, hifijson::Error> {
+    match next {
+        b'a'..=b'z' => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
+        b'0'..=b'9' => Ok(lexer.num_ignore().map(|_| 1)?),
+        b'-' => Ok(lexer.discarded().num_ignore().map(|_| 1)?),
+        b'"' => Ok(lexer.discarded().str_ignore().map(|_| 1)?),
+        b'[' => {
             let mut sum = 1;
-            lexer.seq(Token::RSquare, L::ws_token, |token, lexer| {
-                sum += count(token, lexer)?;
+            lexer.discarded().seq(b']', L::ws_peek, |next, lexer| {
+                sum += count(next, lexer)?;
                 Ok::<_, hifijson::Error>(())
             })?;
             Ok(sum)
         }
-        Token::LCurly => {
+        b'{' => {
             let mut sum = 1;
-            lexer.seq(Token::RCurly, L::ws_token, |token, lexer| {
-                lexer.str_colon(token, L::ws_token, |lexer| {
+            lexer.discarded().seq(b'}', L::ws_peek, |next, lexer| {
+                lexer.str_colon(next, L::ws_peek, |lexer| {
                     lexer.str_ignore().map_err(Error::Str)
                 })?;
-                sum += count(lexer.ws_token().ok_or(Expect::Value)?, lexer)?;
+                sum += count(lexer.ws_peek().ok_or(Expect::Value)?, lexer)?;
                 Ok::<_, hifijson::Error>(())
             })?;
             Ok(sum)
@@ -32,7 +41,7 @@ fn count<L: Lex>(token: Token, lexer: &mut L) -> Result<usize, hifijson::Error> 
 }
 
 fn process<L: Lex>(mut lexer: L) -> Result<usize, hifijson::Error> {
-    lexer.exactly_one(L::ws_token, |token, lexer| count(token, lexer))
+    lexer.exactly_one(L::ws_peek, |next, lexer| count(next, lexer))
 }
 
 fn main() {

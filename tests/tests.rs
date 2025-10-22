@@ -1,5 +1,5 @@
 use core::num::NonZeroUsize;
-use hifijson::token::{Lex, Token};
+use hifijson::token::Lex;
 use hifijson::value::{self, Value};
 use hifijson::{escape, ignore, num, str, Error, Expect, IterLexer, LexAlloc, SliceLexer};
 
@@ -30,35 +30,37 @@ fn iter_of_slice(slice: &[u8]) -> impl Iterator<Item = Result<u8, ()>> + '_ {
 }
 
 fn parses_to(slice: &[u8], v: Value<&str, &str>) -> Result<(), Error> {
-    SliceLexer::new(slice).exactly_one(Lex::ws_token, ignore::parse)?;
-    IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_token, ignore::parse)?;
+    SliceLexer::new(slice).exactly_one(Lex::ws_peek, ignore::parse)?;
+    IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_peek, ignore::parse)?;
 
-    let parsed = SliceLexer::new(slice).exactly_one(Lex::ws_token, value::parse_unbounded)?;
+    let parsed = SliceLexer::new(slice).exactly_one(Lex::ws_peek, value::parse_unbounded)?;
     assert_eq!(parsed, v);
 
     let parsed =
-        IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_token, value::parse_unbounded)?;
+        IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_peek, value::parse_unbounded)?;
     assert_eq!(parsed, v);
 
     Ok(())
 }
 
 fn parses_to_binary_string(slice: &[u8], v: &[u8]) -> Result<(), Error> {
-    SliceLexer::new(slice).exactly_one(Lex::ws_token, ignore::parse)?;
-    IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_token, ignore::parse)?;
+    SliceLexer::new(slice).exactly_one(Lex::ws_peek, ignore::parse)?;
+    IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_peek, ignore::parse)?;
 
-    let parsed = SliceLexer::new(slice).exactly_one(Lex::ws_token, parse_binary_string)?;
+    let parsed = SliceLexer::new(slice).exactly_one(Lex::ws_peek, parse_binary_string)?;
     assert_eq!(parsed, v);
 
     let parsed =
-        IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_token, parse_binary_string)?;
+        IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_peek, parse_binary_string)?;
     assert_eq!(parsed, v);
 
     Ok(())
 }
 
-fn parse_binary_string<L: LexAlloc>(token: Token, lexer: &mut L) -> Result<Vec<u8>, Error> {
-    if token != Token::Quote {
+fn parse_binary_string<L: LexAlloc>(next: u8, lexer: &mut L) -> Result<Vec<u8>, Error> {
+    if next == b'"' {
+        lexer.take_next();
+    } else {
         Err(Error::Token(Expect::String))?
     }
     let on_string = |bytes: &mut L::Bytes, out: &mut Vec<u8>| {
@@ -75,21 +77,21 @@ fn parse_binary_string<L: LexAlloc>(token: Token, lexer: &mut L) -> Result<Vec<u
 }
 
 fn fails_with(slice: &[u8], e: Error) {
-    let parsed = SliceLexer::new(slice).exactly_one(Lex::ws_token, ignore::parse);
+    let parsed = SliceLexer::new(slice).exactly_one(Lex::ws_peek, ignore::parse);
     assert_eq!(parsed.unwrap_err(), e);
 
-    let parsed = IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_token, ignore::parse);
+    let parsed = IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_peek, ignore::parse);
     assert_eq!(parsed.unwrap_err(), e);
 
     parse_fails_with(slice, e)
 }
 
 fn parse_fails_with(slice: &[u8], e: Error) {
-    let parsed = SliceLexer::new(slice).exactly_one(Lex::ws_token, value::parse_unbounded);
+    let parsed = SliceLexer::new(slice).exactly_one(Lex::ws_peek, value::parse_unbounded);
     assert_eq!(parsed.unwrap_err(), e);
 
     let parsed =
-        IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_token, value::parse_unbounded);
+        IterLexer::new(iter_of_slice(slice)).exactly_one(Lex::ws_peek, value::parse_unbounded);
     assert_eq!(parsed.unwrap_err(), e);
 }
 

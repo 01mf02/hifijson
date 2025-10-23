@@ -15,6 +15,8 @@ pub trait Write {
     ///     let mut bytes = L::Bytes::default();
     ///     lexer.write_until(&mut bytes, |c| c == b' ');
     ///     assert_eq!(&*bytes, b"Hello");
+    ///     lexer.write_until(&mut bytes, |_| false);
+    ///     assert_eq!(&*bytes, b" World");
     /// }
     /// let s = b"Hello World";
     /// test(&mut hifijson::SliceLexer::new(s));

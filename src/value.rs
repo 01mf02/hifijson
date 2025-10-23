@@ -1,6 +1,7 @@
 //! Parsing and values.
 
-use crate::{num, str, token, Error, LexAlloc};
+use crate::token::Expect;
+use crate::{num, str, Error, LexAlloc};
 use alloc::vec::Vec;
 use core::fmt;
 use core::ops::Deref;
@@ -78,7 +79,7 @@ fn parse<L: LexAlloc>(
 ) -> Result<Value<L::Num, L::Str>, Error> {
     let nob = |o: Option<bool>| o.map(Value::Bool).unwrap_or(Value::Null);
     match next {
-        b'a'..=b'z' => Ok(lexer.null_or_bool().map(nob).ok_or(token::Expect::Value)?),
+        b'a'..=b'z' => Ok(lexer.null_or_bool().map(nob).ok_or(Expect::Value)?),
         b'-' => Ok(Value::Number(lexer.discarded().num_string("-")?)),
         b'0'..=b'9' => Ok(Value::Number(lexer.num_string("")?)),
         b'"' => Ok(Value::String(lexer.discarded().str_string()?)),
@@ -93,16 +94,16 @@ fn parse<L: LexAlloc>(
         b'{' => Ok(Value::Object({
             let mut obj = Vec::new();
             lexer.discarded().seq(b'}', L::ws_peek, |next, lexer| {
-                let key = lexer.str_colon(next, L::ws_peek, |lexer| {
-                    lexer.str_string().map_err(Error::Str)
-                })?;
-                let value = f(lexer.ws_peek().ok_or(token::Expect::Value)?, lexer)?;
+                lexer.expect(|_| Some(next), b'"').ok_or(Expect::String)?;
+                let key = lexer.str_string().map_err(Error::Str)?;
+                lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
+                let value = f(lexer.ws_peek().ok_or(Expect::Value)?, lexer)?;
                 obj.push((key, value));
                 Ok::<_, Error>(())
             })?;
             obj
         })),
-        _ => Err(token::Expect::Value)?,
+        _ => Err(Expect::Value)?,
     }
 }
 

@@ -34,7 +34,7 @@ impl core::fmt::Display for Expect {
 /// Lexing that does not require allocation.
 ///
 /// Many functions in this trait, including
-/// [`Lex::exactly_one`], [`Lex::seq`], and [`Lex::str_colon`],
+/// [`Lex::exactly_one`], [`Lex::seq`], and [`Lex::expect`],
 /// take a custom "peek function" that implements
 /// `FnMut(&mut Self) -> Option<u8>`.
 /// That function is used to determine the next non-whitespace character.
@@ -75,7 +75,7 @@ pub trait Lex: crate::Read {
         })
     }
 
-    /// Take next token, discard it, and return mutable handle to lexer.
+    /// Take next character, discard it, and return mutable handle to lexer.
     ///
     /// This is useful in particular when parsing negative numbers,
     /// where you want to discard `-` and immediately continue.
@@ -84,26 +84,19 @@ pub trait Lex: crate::Read {
         self
     }
 
-    /// Parse a string with given function, followed by a colon.
-    fn str_colon<T, E: From<Expect>, PF, F>(&mut self, next: u8, pf: PF, f: F) -> Result<T, E>
-    where
-        PF: FnOnce(&mut Self) -> Option<u8>,
-        F: FnOnce(&mut Self) -> Result<T, E>,
-    {
-        if next == b'"' {
-            self.take_next();
+    /// Peek at next character, and discard it if it matches the expected character.
+    ///
+    /// Returns
+    /// `Some(())` if the peeked character matched the expected character, else
+    /// `None`.
+    ///
+    /// If [`bool::ok_or_else`] was stable, we could return a `bool` here.
+    fn expect(&mut self, pf: impl FnOnce(&mut Self) -> Option<u8>, expect: u8) -> Option<()> {
+        if pf(self) == Some(expect) {
+            self.take_next().map(|_| ())
         } else {
-            Err(Expect::String)?
+            None
         }
-        let key = f(self)?;
-
-        if pf(self) == Some(b':') {
-            self.take_next();
-        } else {
-            Err(Expect::Colon)?
-        }
-
-        Ok(key)
     }
 
     /// Execute `f` for every item in the comma-separated sequence until `end`.

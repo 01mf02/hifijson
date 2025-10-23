@@ -139,11 +139,10 @@ impl<'a, L: Lex> CommaSeparated<'a, L> {
     // Comma is required before every element except the first.
     fn comma(&mut self, next: &mut u8) -> Result<()> {
         if !core::mem::take(&mut self.first) {
-            if *next == b',' {
-                *next = self.lexer.discarded().ws_peek().ok_or(Expect::Value)?;
-            } else {
-                Err(Expect::CommaOrEnd)?
-            }
+            self.lexer
+                .expect(|_| Some(*next), b',')
+                .ok_or(Expect::CommaOrEnd)?;
+            *next = self.lexer.ws_peek().ok_or(Expect::Value)?
         }
         Ok(())
     }
@@ -195,12 +194,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::MapAccess<'de> for CommaSeparated<'a, L> {
         V: DeserializeSeed<'de>,
     {
         let lexer = &mut *self.lexer;
-        if lexer.ws_peek() == Some(b':') {
-            lexer.take_next();
-        } else {
-            Err(Expect::Colon)?
-        }
-
+        lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
         let next = lexer.ws_peek().ok_or(Expect::Value)?;
         seed.deserialize(TokenLexer { next, lexer })
     }

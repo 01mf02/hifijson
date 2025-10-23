@@ -120,9 +120,9 @@ fn filter<L: LexAlloc>(
             lexer.discarded().seq(b'}', L::ws_peek, |next, lexer| {
                 idx += 1;
 
-                let key = lexer.str_colon(next, L::ws_peek, |lexer| {
-                    lexer.str_string().map_err(Error::Str)
-                })?;
+                lexer.expect(|_| Some(next), b'"').ok_or(Expect::String)?;
+                let key = lexer.str_string().map_err(Error::Str)?;
+                lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
                 let next = lexer.ws_peek().ok_or(Expect::Value)?;
                 if elem.strs.is_empty() || elem.strs.iter().any(|s| s == key.deref()) {
                     filter(rest, next, lexer, print)
@@ -172,9 +172,10 @@ fn lex<L: LexWrite>(next: u8, lexer: &mut L, print: fn(&[u8])) -> Result<(), Err
                     print(b",");
                 }
 
-                lexer.str_colon(next, L::ws_peek, |lexer| {
-                    lex_string(lexer, print).map_err(Error::Str)
-                })?;
+                lexer.expect(|_| Some(next), b'"').ok_or(Expect::String)?;
+                lex_string(lexer, print).map_err(Error::Str)?;
+                lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
+
                 print(b":");
                 lex(lexer.ws_peek().ok_or(Expect::Value)?, lexer, print)
             })?;

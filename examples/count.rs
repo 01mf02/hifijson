@@ -27,9 +27,9 @@ fn count<L: Lex>(next: u8, lexer: &mut L) -> Result<usize, hifijson::Error> {
         b'{' => {
             let mut sum = 1;
             lexer.discarded().seq(b'}', L::ws_peek, |next, lexer| {
-                lexer.str_colon(next, L::ws_peek, |lexer| {
-                    lexer.str_ignore().map_err(Error::Str)
-                })?;
+                lexer.expect(|_| Some(next), b'"').ok_or(Expect::String)?;
+                lexer.str_ignore().map_err(Error::Str)?;
+                lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
                 sum += count(lexer.ws_peek().ok_or(Expect::Value)?, lexer)?;
                 Ok::<_, hifijson::Error>(())
             })?;

@@ -171,8 +171,11 @@
 //!             // perform the following for every key-value pair of the object
 //!             lexer.discarded().seq(b'}', L::ws_peek, |next, lexer| {
 //!                 /// read the key, ignoring it, and then the ':' after it
-//!                 lexer.str_colon(next, L::ws_peek, |lexer| lexer.str_ignore().map_err(Error::Str))?;
-//!                 /// now peek the next non-whitespace character after ':'
+//!                 lexer.expect(|_| Some(next), b'"').ok_or(Expect::String)?;
+//!                 lexer.str_ignore().map_err(Error::Str)?;
+//!                 lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
+//!
+//!                 /// peek the next non-whitespace character
 //!                 let next = lexer.ws_peek().ok_or(Expect::Value)?;
 //!                 sum += count(next, lexer)?;
 //!                 Ok::<_, Error>(())

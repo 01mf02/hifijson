@@ -1,6 +1,8 @@
 /// Low-level input operations.
 pub trait Read {
     /// Return `true` if the given byte sequence is a prefix of the input.
+    ///
+    /// This function may advance the input even if it returns `false`.
     fn strip_prefix(&mut self, s: &[u8]) -> bool {
         for c1 in s {
             match self.take_next() {

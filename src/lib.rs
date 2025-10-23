@@ -231,8 +231,8 @@ use core::fmt::{self, Display};
 mod read;
 mod write;
 
-use read::Read;
-use write::Write;
+pub use read::Read;
+pub use write::Write;
 
 pub mod escape;
 pub mod num;

@@ -32,6 +32,20 @@ impl core::fmt::Display for Expect {
 }
 
 /// Lexing that does not require allocation.
+///
+/// Many functions in this trait, including
+/// [`Lex::exactly_one`], [`Lex::seq`], and [`Lex::str_colon`],
+/// take a custom "peek function" that implements
+/// `FnMut(&mut Self) -> Option<u8>`.
+/// That function is used to determine the next non-whitespace character.
+/// You can use [`Lex::ws_peek`] as JSON-compliant peek function.
+///
+/// The general policy for handling peeked characters is:
+/// When a function takes a `next: u8` character,
+/// then that character is assumed to be peeked; i.e.,
+/// [`crate::Read::peek_next`] must return `Some(next)`.
+/// This policy is helpful to determine where the input must be advanced,
+/// e.g. by using [`crate::Read::take_next`].
 pub trait Lex: crate::Read {
     /// Skip input until the earliest non-whitespace character.
     fn eat_whitespace(&mut self) {
@@ -45,6 +59,12 @@ pub trait Lex: crate::Read {
     }
 
     /// Parse a JSON token starting with a letter.
+    ///
+    /// This returns:
+    ///
+    /// - `Some(None)` if the input is "null",
+    /// - `Some(Some(b))` if the input is a boolean `b` ("true" or "false"), else
+    /// - `None`.
     fn null_or_bool(&mut self) -> Option<Option<bool>> {
         // we are calling this function without having advanced before
         Some(match self.take_next() {

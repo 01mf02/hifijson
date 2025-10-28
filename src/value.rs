@@ -1,6 +1,7 @@
 //! Parsing and values.
 
-use crate::{num, str, token, Error, LexAlloc, Token};
+use crate::token::Expect;
+use crate::{num, str, Error, LexAlloc};
 use alloc::vec::Vec;
 use core::fmt;
 use core::ops::Deref;
@@ -72,39 +73,37 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
 
 /// Parse a value, using `f` to parse recursive values inside arrays / objects.
 fn parse<L: LexAlloc>(
-    token: Token,
+    next: u8,
     lexer: &mut L,
-    f: impl Fn(Token, &mut L) -> Result<Value<L::Num, L::Str>, Error>,
+    f: impl Fn(u8, &mut L) -> Result<Value<L::Num, L::Str>, Error>,
 ) -> Result<Value<L::Num, L::Str>, Error> {
     let nob = |o: Option<bool>| o.map(Value::Bool).unwrap_or(Value::Null);
-    match token {
-        Token::Other(b'a'..=b'z') => {
-            Ok(lexer.null_or_bool().map(nob).ok_or(token::Expect::Value)?)
-        }
-        Token::Other(b'-') => Ok(Value::Number(lexer.discarded().num_string("-")?)),
-        Token::Other(b'0'..=b'9') => Ok(Value::Number(lexer.num_string("")?)),
-        Token::Quote => Ok(Value::String(lexer.str_string()?)),
-        Token::LSquare => Ok(Value::Array({
+    match next {
+        b'a'..=b'z' => Ok(lexer.null_or_bool().map(nob).ok_or(Expect::Value)?),
+        b'-' => Ok(Value::Number(lexer.discarded().num_string("-")?)),
+        b'0'..=b'9' => Ok(Value::Number(lexer.num_string("")?)),
+        b'"' => Ok(Value::String(lexer.discarded().str_string()?)),
+        b'[' => Ok(Value::Array({
             let mut arr = Vec::new();
-            lexer.seq(Token::RSquare, L::ws_token, |token, lexer| {
-                arr.push(f(token, lexer)?);
+            lexer.discarded().seq(b']', L::ws_peek, |next, lexer| {
+                arr.push(f(next, lexer)?);
                 Ok::<_, Error>(())
             })?;
             arr
         })),
-        Token::LCurly => Ok(Value::Object({
+        b'{' => Ok(Value::Object({
             let mut obj = Vec::new();
-            lexer.seq(Token::RCurly, L::ws_token, |token, lexer| {
-                let key = lexer.str_colon(token, L::ws_token, |lexer| {
-                    lexer.str_string().map_err(Error::Str)
-                })?;
-                let value = f(lexer.ws_token().ok_or(token::Expect::Value)?, lexer)?;
+            lexer.discarded().seq(b'}', L::ws_peek, |next, lexer| {
+                lexer.expect(|_| Some(next), b'"').ok_or(Expect::String)?;
+                let key = lexer.str_string().map_err(Error::Str)?;
+                lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
+                let value = f(lexer.ws_peek().ok_or(Expect::Value)?, lexer)?;
                 obj.push((key, value));
                 Ok::<_, Error>(())
             })?;
             obj
         })),
-        _ => Err(token::Expect::Value)?,
+        _ => Err(Expect::Value)?,
     }
 }
 
@@ -112,10 +111,10 @@ fn parse<L: LexAlloc>(
 ///
 /// To prevent stack overflows, consider using [`parse_bounded`].
 pub fn parse_unbounded<L: LexAlloc>(
-    token: Token,
+    next: u8,
     lexer: &mut L,
 ) -> Result<Value<L::Num, L::Str>, Error> {
-    parse(token, lexer, parse_unbounded)
+    parse(next, lexer, parse_unbounded)
 }
 
 /// Parse an value, limiting the recursion to `depth`.
@@ -123,9 +122,9 @@ pub fn parse_unbounded<L: LexAlloc>(
 /// This serves to prevent stack overflows.
 pub fn parse_bounded<L: LexAlloc>(
     depth: usize,
-    token: Token,
+    next: u8,
     lexer: &mut L,
 ) -> Result<Value<L::Num, L::Str>, Error> {
     let d = depth.checked_sub(1).ok_or(Error::Depth)?;
-    parse(token, lexer, |token, lexer| parse_bounded(d, token, lexer))
+    parse(next, lexer, |next, lexer| parse_bounded(d, next, lexer))
 }

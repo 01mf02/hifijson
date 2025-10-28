@@ -1,7 +1,15 @@
 //! JSON validator & pretty-printer.
+//!
+//! Test it with:
+//!
+//!     cargo run --example cat -- <<< '{"a": [null, 1, "b"]}'
+//!
+//! This should yield:
+//!
+//!     {"a":[null,1,"b"]}
 
 use core::ops::Deref;
-use hifijson::{str, value, Error, Expect, IterLexer, LexAlloc, LexWrite, SliceLexer, Token};
+use hifijson::{str, value, Error, Expect, IterLexer, LexAlloc, LexWrite, SliceLexer};
 use std::{fs, io};
 
 #[derive(Default)]
@@ -45,7 +53,7 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> TryFrom<value::Value<Nu
 fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
     if cli.parse {
         if cli.many {
-            let vs = core::iter::from_fn(|| Some(value::parse_unbounded(lexer.ws_token()?, lexer)));
+            let vs = core::iter::from_fn(|| Some(value::parse_unbounded(lexer.ws_peek()?, lexer)));
             for v in vs {
                 let v = v?;
                 if !cli.silent {
@@ -53,23 +61,23 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
                 };
             }
         } else {
-            let v = lexer.exactly_one(L::ws_token, value::parse_unbounded)?;
+            let v = lexer.exactly_one(L::ws_peek, value::parse_unbounded)?;
             if !cli.silent {
                 println!("{}", v)
             };
         }
     } else {
         let mut seen = false;
-        while let Some(token) = lexer.ws_token() {
+        while let Some(next) = lexer.ws_peek() {
             if seen && !cli.many {
                 Err(Expect::Eof)?
             }
             if cli.silent {
-                lex(token, lexer, &|_| ())?;
+                lex(next, lexer, |_| ())?;
             } else {
                 let path: Vec<_> = cli.path.as_deref().map(parse_path).unwrap_or(Vec::new());
                 use std::io::Write;
-                filter(&path, token, lexer, &|b| io::stdout().write_all(b).unwrap())?;
+                filter(&path, next, lexer, |b| io::stdout().write_all(b).unwrap())?;
             }
             seen = true;
         }
@@ -82,44 +90,44 @@ fn process<L: LexAlloc>(cli: &Cli, lexer: &mut L) -> Result<(), Error> {
 
 fn filter<L: LexAlloc>(
     path: &[PathElem],
-    token: Token,
+    next: u8,
     lexer: &mut L,
-    print: &impl Fn(&[u8]),
+    print: fn(&[u8]),
 ) -> Result<(), Error> {
     let (elem, rest) = if let Some(path) = path.split_first() {
         path
     } else {
-        lex(token, lexer, print)?;
+        lex(next, lexer, print)?;
         println!();
         return Ok(());
     };
 
-    match token {
-        Token::LSquare => {
+    match next {
+        b'[' => {
             let mut idx = 0;
-            lexer.seq(Token::RSquare, L::ws_token, |token, lexer| {
+            lexer.discarded().seq(b']', L::ws_peek, |next, lexer| {
                 let out = if elem.ints.is_empty() || elem.ints.contains(&idx) {
-                    filter(rest, token, lexer, print)
+                    filter(rest, next, lexer, print)
                 } else {
-                    hifijson::ignore::parse(token, lexer)
+                    hifijson::ignore::parse(next, lexer)
                 };
                 idx += 1;
                 out
             })?;
         }
-        Token::LCurly => {
+        b'{' => {
             let mut idx = 0;
-            lexer.seq(Token::RCurly, L::ws_token, |token, lexer| {
+            lexer.discarded().seq(b'}', L::ws_peek, |next, lexer| {
                 idx += 1;
 
-                let key = lexer.str_colon(token, L::ws_token, |lexer| {
-                    lexer.str_string().map_err(Error::Str)
-                })?;
-                let token = lexer.ws_token().ok_or(Expect::Value)?;
+                lexer.expect(|_| Some(next), b'"').ok_or(Expect::String)?;
+                let key = lexer.str_string().map_err(Error::Str)?;
+                lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
+                let next = lexer.ws_peek().ok_or(Expect::Value)?;
                 if elem.strs.is_empty() || elem.strs.iter().any(|s| s == key.deref()) {
-                    filter(rest, token, lexer, print)
+                    filter(rest, next, lexer, print)
                 } else {
-                    hifijson::ignore::parse(token, lexer)
+                    hifijson::ignore::parse(next, lexer)
                 }
             })?;
         }
@@ -128,47 +136,48 @@ fn filter<L: LexAlloc>(
     Ok(())
 }
 
-fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), Error> {
-    match token {
-        Token::Other(b'a'..=b'z') => print(match lexer.null_or_bool().ok_or(Expect::Value)? {
+fn lex<L: LexWrite>(next: u8, lexer: &mut L, print: fn(&[u8])) -> Result<(), Error> {
+    match next {
+        b'a'..=b'z' => print(match lexer.null_or_bool().ok_or(Expect::Value)? {
             None => b"null",
             Some(true) => b"true",
             Some(false) => b"false",
         }),
-        Token::Other(b'-') => {
+        b'-' => {
             print(b"-");
-            lex(Token::Other(b'0'), lexer.discarded(), print)?
+            lex(b'0', lexer.discarded(), print)?
         }
-        Token::Other(b'0'..=b'9') => {
+        b'0'..=b'9' => {
             let mut num = Default::default();
             let _pos = lexer.num_bytes(&mut num, b"")?;
             print(&num)
         }
-        Token::Quote => lex_string(lexer, print)?,
-        Token::LSquare => {
+        b'"' => lex_string(lexer.discarded(), print)?,
+        b'[' => {
             print(b"[");
             let mut first = true;
-            lexer.seq(Token::RSquare, L::ws_token, |token, lexer| {
+            lexer.discarded().seq(b']', L::ws_peek, |next, lexer| {
                 if !core::mem::take(&mut first) {
                     print(b",");
                 }
-                lex(token, lexer, print)
+                lex(next, lexer, print)
             })?;
             print(b"]");
         }
-        Token::LCurly => {
+        b'{' => {
             print(b"{");
             let mut first = true;
-            lexer.seq(Token::RCurly, L::ws_token, |token, lexer| {
+            lexer.discarded().seq(b'}', L::ws_peek, |next, lexer| {
                 if !core::mem::take(&mut first) {
                     print(b",");
                 }
 
-                lexer.str_colon(token, L::ws_token, |lexer| {
-                    lex_string(lexer, print).map_err(Error::Str)
-                })?;
+                lexer.expect(|_| Some(next), b'"').ok_or(Expect::String)?;
+                lex_string(lexer, print).map_err(Error::Str)?;
+                lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
+
                 print(b":");
-                lex(lexer.ws_token().ok_or(Expect::Value)?, lexer, print)
+                lex(lexer.ws_peek().ok_or(Expect::Value)?, lexer, print)
             })?;
             print(b"}")
         }
@@ -177,7 +186,7 @@ fn lex<L: LexWrite>(token: Token, lexer: &mut L, print: &impl Fn(&[u8])) -> Resu
     Ok(())
 }
 
-fn lex_string<L: LexWrite>(lexer: &mut L, print: &impl Fn(&[u8])) -> Result<(), str::Error> {
+fn lex_string<L: LexWrite>(lexer: &mut L, print: fn(&[u8])) -> Result<(), str::Error> {
     print(b"\"");
     let mut bytes = L::Bytes::default();
     lexer.str_bytes(&mut bytes)?;
@@ -205,7 +214,7 @@ fn process_stdin(cli: &Cli) -> io::Result<()> {
 fn parse_path(path: &str) -> Vec<PathElem> {
     use hifijson::token::Lex;
     let lexer = &mut SliceLexer::new(path.as_bytes());
-    core::iter::from_fn(|| Some(value::parse_unbounded(lexer.ws_token()?, lexer)))
+    core::iter::from_fn(|| Some(value::parse_unbounded(lexer.ws_peek()?, lexer)))
         .map(|e| PathElem::try_from(e.unwrap()).unwrap())
         .collect()
 }

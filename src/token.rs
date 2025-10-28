@@ -31,69 +31,40 @@ impl core::fmt::Display for Expect {
     }
 }
 
-/// JSON lexer token.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Token {
-    /// `,`
-    Comma,
-    /// `:`
-    Colon,
-    /// `[`
-    LSquare,
-    /// `]`
-    RSquare,
-    /// `{`
-    LCurly,
-    /// `}`
-    RCurly,
-    /// `"`
-    Quote,
-    /// anything else
-    Other(u8),
-}
-
-impl core::fmt::Display for Token {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        use Token::*;
-        match self {
-            Comma => ',',
-            Colon => ':',
-            LSquare => '[',
-            RSquare => ']',
-            LCurly => '{',
-            RCurly => '}',
-            Quote => '"',
-            Other(b) => char::from(*b),
-        }
-        .fmt(f)
-    }
-}
-
-impl Token {
-    /// Return `Ok(())` if `self` equals `token`, else return `Err(err)`.
-    pub fn equals_or<E>(&self, token: Token, err: E) -> Result<(), E> {
-        if *self == token {
-            Ok(())
-        } else {
-            Err(err)
-        }
-    }
-}
-
 /// Lexing that does not require allocation.
+///
+/// Many functions in this trait, including
+/// [`Lex::exactly_one`], [`Lex::seq`], and [`Lex::expect`],
+/// take a custom "peek function" that implements
+/// `FnMut(&mut Self) -> Option<u8>`.
+/// That function is used to determine the next non-whitespace character.
+/// You can use [`Lex::ws_peek`] as JSON-compliant peek function.
+///
+/// The general policy for handling peeked characters is:
+/// When a function takes a `next: u8` character,
+/// then that character is assumed to be peeked; i.e.,
+/// [`crate::Read::peek_next`] must return `Some(next)`.
+/// This policy is helpful to determine where the input must be advanced,
+/// e.g. by using [`crate::Read::take_next`].
 pub trait Lex: crate::Read {
     /// Skip input until the earliest non-whitespace character.
     fn eat_whitespace(&mut self) {
         self.skip_until(|c| !matches!(c, b' ' | b'\t' | b'\r' | b'\n'))
     }
 
-    /// Skip potential whitespace and return the following token if there is some.
-    fn ws_token(&mut self) -> Option<Token> {
+    /// Skip whitespace and peek at the following character.
+    fn ws_peek(&mut self) -> Option<u8> {
         self.eat_whitespace();
-        self.peek_next().map(|next| self.token(next))
+        self.peek_next()
     }
 
     /// Parse a JSON token starting with a letter.
+    ///
+    /// This returns:
+    ///
+    /// - `Some(None)` if the input is "null",
+    /// - `Some(Some(b))` if the input is a boolean `b` ("true" or "false"), else
+    /// - `None`.
     fn null_or_bool(&mut self) -> Option<Option<bool>> {
         // we are calling this function without having advanced before
         Some(match self.take_next() {
@@ -104,30 +75,7 @@ pub trait Lex: crate::Read {
         })
     }
 
-    /// Convert a character to a token, such as '`:`' to [`Token::Colon`].
-    ///
-    /// Only when the token consists of a single character that can be
-    /// reconstructed losslessly from the token, such as `[` or `:`,
-    /// then the current character is consumed.
-    /// All other non-token characters are preserved, i.e. input is not advanced.
-    fn token(&mut self, c: u8) -> Token {
-        let token = match c {
-            b'"' => Token::Quote,
-            b'[' => Token::LSquare,
-            b']' => Token::RSquare,
-            b'{' => Token::LCurly,
-            b'}' => Token::RCurly,
-            b',' => Token::Comma,
-            b':' => Token::Colon,
-            // it is important to `return` here in order not to take the next byte,
-            // like we do for the regular, single-character tokens
-            _ => return Token::Other(c),
-        };
-        self.take_next();
-        token
-    }
-
-    /// Take next token, discard it, and return mutable handle to lexer.
+    /// Take next character, discard it, and return mutable handle to lexer.
     ///
     /// This is useful in particular when parsing negative numbers,
     /// where you want to discard `-` and immediately continue.
@@ -136,39 +84,42 @@ pub trait Lex: crate::Read {
         self
     }
 
-    /// Parse a string with given function, followed by a colon.
-    fn str_colon<T, E: From<Expect>, TF, F>(&mut self, token: Token, tf: TF, f: F) -> Result<T, E>
-    where
-        TF: FnOnce(&mut Self) -> Option<Token>,
-        F: FnOnce(&mut Self) -> Result<T, E>,
-    {
-        token.equals_or(Token::Quote, Expect::String)?;
-        let key = f(self)?;
-
-        let colon = tf(self).filter(|t| *t == Token::Colon);
-        colon.ok_or(Expect::Colon)?;
-
-        Ok(key)
+    /// Peek at next character, and discard it if it matches the expected character.
+    ///
+    /// Returns
+    /// `Some(())` if the peeked character matched the expected character, else
+    /// `None`.
+    ///
+    /// If [`bool::ok_or_else`] was stable, we could return a `bool` here.
+    fn expect(&mut self, pf: impl FnOnce(&mut Self) -> Option<u8>, expect: u8) -> Option<()> {
+        if pf(self) == Some(expect) {
+            self.take_next().map(|_| ())
+        } else {
+            None
+        }
     }
 
     /// Execute `f` for every item in the comma-separated sequence until `end`.
-    fn seq<E: From<Expect>, TF, F>(&mut self, end: Token, mut tf: TF, mut f: F) -> Result<(), E>
+    fn seq<E: From<Expect>, PF, F>(&mut self, end: u8, mut pf: PF, mut f: F) -> Result<(), E>
     where
-        TF: FnMut(&mut Self) -> Option<Token>,
-        F: FnMut(Token, &mut Self) -> Result<(), E>,
+        PF: FnMut(&mut Self) -> Option<u8>,
+        F: FnMut(u8, &mut Self) -> Result<(), E>,
     {
-        let mut token = tf(self).ok_or(Expect::ValueOrEnd)?;
-        if token == end {
+        let mut next = pf(self).ok_or(Expect::ValueOrEnd)?;
+        if next == end {
+            self.take_next();
             return Ok(());
         };
 
         loop {
-            f(token, self)?;
-            token = tf(self).ok_or(Expect::CommaOrEnd)?;
-            if token == end {
+            f(next, self)?;
+            next = pf(self).ok_or(Expect::CommaOrEnd)?;
+            if next == end {
+                self.take_next();
                 return Ok(());
-            } else if token == Token::Comma {
-                token = tf(self).ok_or(Expect::Value)?;
+            } else if next == b',' {
+                self.take_next();
+                next = pf(self).ok_or(Expect::Value)?;
             } else {
                 return Err(Expect::CommaOrEnd)?;
             }
@@ -176,15 +127,14 @@ pub trait Lex: crate::Read {
     }
 
     /// Parse once using given function and assure that the function has consumed all tokens.
-    fn exactly_one<T, E: From<Expect>, TF, F>(&mut self, mut tf: TF, f: F) -> Result<T, E>
+    fn exactly_one<T, E: From<Expect>, PF, F>(&mut self, mut pf: PF, f: F) -> Result<T, E>
     where
-        TF: FnMut(&mut Self) -> Option<Token>,
-        F: FnOnce(Token, &mut Self) -> Result<T, E>,
+        PF: FnMut(&mut Self) -> Option<u8>,
+        F: FnOnce(u8, &mut Self) -> Result<T, E>,
     {
-        let token = tf(self).ok_or(Expect::Value)?;
-        let v = f(token, self)?;
-        self.eat_whitespace();
-        match self.peek_next() {
+        let next = pf(self).ok_or(Expect::Value)?;
+        let v = f(next, self)?;
+        match pf(self) {
             None => Ok(v),
             Some(_) => Err(Expect::Eof)?,
         }

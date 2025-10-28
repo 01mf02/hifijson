@@ -59,7 +59,7 @@ fn hifi(s: &[u8]) {
     let mut lexer = hifijson::SliceLexer::new(s);
     //lexer.exactly_one(hifijson::ignore::parse).unwrap();
     lexer
-        .exactly_one(Lex::ws_token, hifijson::value::parse_unbounded)
+        .exactly_one(Lex::ws_peek, hifijson::value::parse_unbounded)
         .unwrap();
     //hifijson::serde::exactly_one::<serde_json::Value, _>(&mut lexer).unwrap();
 }

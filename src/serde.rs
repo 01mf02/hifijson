@@ -78,7 +78,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
     where
         V: Visitor<'de>,
     {
-        let num = |lexer: &mut L, visitor: V, prefix: &str| {
+        let num = |lexer: &mut L, visitor: V, prefix: &'static str| {
             let (n, parts) = lexer.num_string(prefix).map_err(Num)?;
             match (parts.is_int(), prefix) {
                 (true, "-") => visitor.visit_i64(parse_number(&n)?),

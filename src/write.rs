@@ -37,9 +37,10 @@ impl<'a> Write for crate::SliceLexer<'a> {
         let prefix = bytes.len();
         // rewind by prefix length
         self.slice = &self.whole[self.offset() - prefix..];
-        let pos = (prefix..self.slice.len())
-            .position(|l| stop(&self.slice[..l], self.slice[l]))
-            .unwrap_or(self.slice.len());
+        let mut iter = self.slice.iter().enumerate().skip(prefix);
+        let pos = iter
+            .find(|(i, c)| stop(&self.slice[..*i], **c))
+            .map_or(self.slice.len(), |(i, _c)| i);
         *bytes = &self.slice[..pos];
         self.slice = &self.slice[pos..]
     }

@@ -1,4 +1,3 @@
-use core::num::NonZeroUsize;
 use hifijson::token::Lex;
 use hifijson::value::{self, Value};
 use hifijson::{escape, ignore, num, str, Error, Expect, IterLexer, LexAlloc, SliceLexer};
@@ -8,8 +7,6 @@ fn boole<Num, Str>(b: bool) -> Value<Num, Str> {
 }
 
 fn num<Num, Str>(n: Num, dot: Option<usize>, exp: Option<usize>) -> Value<Num, Str> {
-    let dot = dot.map(|i| NonZeroUsize::new(i).unwrap());
-    let exp = exp.map(|i| NonZeroUsize::new(i).unwrap());
     Value::Number((n, num::Parts { dot, exp }))
 }
 

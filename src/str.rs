@@ -180,7 +180,7 @@ pub trait LexWrite: escape::Lex + Read + Write {
     /// Read a string to bytes, copying escape sequences one-to-one.
     fn str_bytes(&mut self, bytes: &mut Self::Bytes) -> Result<(), Error> {
         let mut state = State::default();
-        self.write_until(bytes, |c| state.process(c));
+        self.write_until(bytes, |_, c| state.process(c));
         state.finish(|| self.take_next())
     }
 
@@ -196,7 +196,7 @@ pub trait LexWrite: escape::Lex + Read + Write {
         }
 
         let mut bytes = Self::Bytes::default();
-        self.write_until(&mut bytes, string_end);
+        self.write_until(&mut bytes, |_, c| string_end(c));
         on_string(&mut bytes, &mut out)?;
         match self.take_next().ok_or(Error::Eof)? {
             b'\\' => (),
@@ -206,7 +206,7 @@ pub trait LexWrite: escape::Lex + Read + Write {
         }
         loop {
             on_escape(self, &mut out)?;
-            self.write_until(&mut bytes, string_end);
+            self.write_until(&mut bytes, |_, c| string_end(c));
             on_string(&mut bytes, &mut out)?;
             match self.take_next().ok_or(Error::Eof)? {
                 b'\\' => continue,

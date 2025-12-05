@@ -6,12 +6,15 @@ fn boole<Num, Str>(b: bool) -> Value<Num, Str> {
     Value::Bool(b)
 }
 
-fn num<Num, Str>(n: Num, dot: Option<usize>, exp: Option<usize>) -> Value<Num, Str> {
-    Value::Number((n, num::Parts { dot, exp }))
-}
-
-fn int<Num, Str>(i: Num) -> Value<Num, Str> {
-    num(i, None, None)
+fn num<Str>(n: &str) -> Value<&str, Str> {
+    let pos_zero = n.starts_with("0").then_some(0);
+    let neg_zero = n.starts_with("-0").then_some(1);
+    let parts = num::Parts {
+        zero: pos_zero.or(neg_zero),
+        dot: n.find('.'),
+        exp: n.find(['e', 'E']),
+    };
+    Value::Number((n, parts))
 }
 
 fn arr<Num, Str, const N: usize>(v: [Value<Num, Str>; N]) -> Value<Num, Str> {
@@ -110,19 +113,22 @@ fn basic() -> Result<(), Error> {
 
 #[test]
 fn numbers() -> Result<(), Error> {
-    parses_to(b"0", int("0"))?;
-    parses_to(b"42", int("42"))?;
-    parses_to(b"-0", int("-0"))?;
-    parses_to(b"-42", int("-42"))?;
+    parses_to(b"0", num("0"))?;
+    parses_to(b"42", num("42"))?;
+    parses_to(b"-0", num("-0"))?;
+    parses_to(b"-42", num("-42"))?;
 
-    parses_to(b"3.14", num("3.14", Some(1), None))?;
+    parses_to(b"3.14", num("3.14"))?;
 
     // speed of light in m/s
-    parses_to(b"299e6", num("299e6", None, Some(3)))?;
+    parses_to(b"299e6", num("299e6"))?;
     // now a bit more precise
-    parses_to(b"299.792e6", num("299.792e6", Some(3), Some(7)))?;
-    parses_to(b"-1.2e+3", num("-1.2e+3", Some(2), Some(4)))?;
-    parses_to(b"-1.2e-3", num("-1.2e-3", Some(2), Some(4)))?;
+    parses_to(b"299.792e6", num("299.792e6"))?;
+    parses_to(b"-1.2e+3", num("-1.2e+3"))?;
+    parses_to(b"-1.2e-3", num("-1.2e-3"))?;
+
+    parses_to(b"0.1e2", num("0.1e2"))?;
+    parses_to(b"-0.1e2", num("-0.1e2"))?;
 
     fails_with(b"-", num::Error::ExpectedDigit.into());
     fails_with(b"1.", num::Error::ExpectedDigit.into());
@@ -178,7 +184,7 @@ fn strings() -> Result<(), Error> {
 fn arrays() -> Result<(), Error> {
     parses_to(b"[]", arr([]))?;
     parses_to(b"[false, true]", arr([boole(false), boole(true)]))?;
-    parses_to(b"[0, 1]", arr([int("0"), int("1")]))?;
+    parses_to(b"[0, 1]", arr([num("0"), num("1")]))?;
     parses_to(b"[[]]", arr([arr([])]))?;
 
     fails_with(b"[", Expect::ValueOrEnd.into());
@@ -192,10 +198,10 @@ fn arrays() -> Result<(), Error> {
 #[test]
 fn objects() -> Result<(), Error> {
     parses_to(b"{}", obj([]))?;
-    parses_to(br#"{"a": 0}"#, obj([("a", int("0"))]))?;
+    parses_to(br#"{"a": 0}"#, obj([("a", num("0"))]))?;
     parses_to(
         br#"{"a": 0, "b": 1}"#,
-        obj([("a", int("0")), ("b", int("1"))]),
+        obj([("a", num("0")), ("b", num("1"))]),
     )?;
 
     fails_with(b"{", Expect::ValueOrEnd.into());

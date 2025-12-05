@@ -1,18 +1,19 @@
 //! Positive numbers.
 //!
-//! The lexers in this modules, in particular
+//! Conforming to the JSON specification, the lexers in this modules, in particular
 //! [`Lex::num_ignore`] and
 //! [`LexWrite::num_string`],
 //! accept numbers corresponding to the regex
-//! `\d+(\.\d+)?([eE][+-]?\d+)?`.
-//! This is strictly more general than the JSON specification,
-//! which specifies numbers as
 //! `(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?`.
-//! That excludes numbers like `007`, which are accepted by the former regex.
 //!
-//! If you require stricter conformance to JSON numbers,
-//! you can rule out lexed numbers that start with `0\d` manually after lexing.
-
+//! This leads numbers like `007` to be lexed as three separate numbers;
+//! `0`, `0`, and `7`.
+//! That is because after a leading `0`, the lexer expects only ".", "e" or "E",
+//! so when it sees another digit (such as "0" or "7"),
+//! it assumes that it is not part of the number.
+//!
+//! To prevent such behaviour, verify that numbers are not followed by a digit,
+//! e.g. with [`crate::Read::peek_next`].
 use crate::{Read, Write};
 use core::fmt::{self, Display};
 /// Number lexing error.
@@ -36,13 +37,12 @@ impl Display for Error {
     }
 }
 
-/// Position of `.` and `e`/`E` in the string representation of a number.
-///
-/// Because a number cannot start with `.` or `e`/`E`,
-/// these positions must always be greater than zero.
+/// Positions of various parts in the string representation of a number.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Parts {
-    /// position of the dot
+    /// position of leading zero (`0`)
+    pub zero: Option<usize>,
+    /// position of the dot (`.`)
     pub dot: Option<usize>,
     /// position of the exponent character (`e`/`E`)
     pub exp: Option<usize>,
@@ -63,7 +63,7 @@ pub trait Lex: Read {
         let mut len = 0;
         let mut prev = None;
         self.skip_until(|c| {
-            parts.num_end(len, prev, c) || {
+            !parts.num_part(len, prev, c) || {
                 len += 1;
                 prev = Some(c);
                 false
@@ -77,22 +77,18 @@ pub trait Lex: Read {
 impl<T> Lex for T where T: Read {}
 
 impl Parts {
-    /// Returns whether the next character `c` terminates the current number.
-    fn num_end(&mut self, len: usize, prev: Option<u8>, c: u8) -> bool {
-        let prev_digit = || prev.map_or(false, |c| c.is_ascii_digit());
-        match c {
-            _ if c.is_ascii_digit() => false,
-            b'.' if self.dot.is_none() && self.exp.is_none() && prev_digit() => {
-                self.dot = Some(len);
-                false
-            }
-            b'e' | b'E' if self.exp.is_none() && prev_digit() => {
-                self.exp = Some(len);
-                false
-            }
-            b'+' | b'-' if self.exp.map(|i| i + 1) == Some(len) => false,
-            _ => true,
-        }
+    /// Returns whether the next character `c` is part of the current number.
+    fn num_part(&mut self, len: usize, prev: Option<u8>, c: u8) -> bool {
+        let Self { zero, exp, dot } = self;
+        match (prev, c) {
+            (None, b'0') => *zero = Some(len),
+            (_, b'0'..=b'9') => return zero.is_none() || dot.or(*exp).is_some(),
+            (Some(b'0'..=b'9'), b'.') if dot.or(*exp).is_none() => *dot = Some(len),
+            (Some(b'0'..=b'9'), b'e' | b'E') if exp.is_none() => *exp = Some(len),
+            (Some(b'e' | b'E'), b'+' | b'-') => return true,
+            _ => return false,
+        };
+        true
     }
 }
 
@@ -108,8 +104,14 @@ pub trait LexWrite: Lex + Write {
     /// This allows you to include "-" in the bytes without allocation.
     fn num_bytes(&mut self, num: &mut Self::Bytes) -> Result<Parts, Error> {
         let mut parts = Parts::default();
-        self.append_until(num, |b, c| parts.num_end(b.len(), b.last().copied(), c));
-        let valid = num.last().map_or(false, u8::is_ascii_digit);
+        let mut prev = None;
+        self.append_until(num, |b, c| {
+            !parts.num_part(b.len(), prev, c) || {
+                prev = Some(c);
+                false
+            }
+        });
+        let valid = prev.as_ref().map_or(false, u8::is_ascii_digit);
         valid.then(|| parts).ok_or(Error::ExpectedDigit)
     }
 

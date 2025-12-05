@@ -51,9 +51,10 @@ impl<'a> Read for crate::SliceLexer<'a> {
         }
     }
 
-    fn skip_until(&mut self, stop: impl FnMut(u8) -> bool) {
-        use crate::Write;
-        self.write_until(&mut &[][..], stop)
+    fn skip_until(&mut self, mut stop: impl FnMut(u8) -> bool) {
+        while let Some((_, tl)) = self.slice.split_first().filter(|(hd, _)| !stop(**hd)) {
+            self.slice = tl
+        }
     }
 
     fn take_next(&mut self) -> Option<u8> {

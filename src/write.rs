@@ -8,6 +8,8 @@ pub trait Write {
 
     /// Write input to `bytes` until `stop` yields true.
     ///
+    /// The `stop` function gets the previously read bytes and the current byte.
+    ///
     /// This function does not return a new [`Self::Bytes`] to avoid allocations.
     ///
     /// ~~~
@@ -34,10 +36,14 @@ impl<'a> Write for crate::SliceLexer<'a> {
     type Bytes = &'a [u8];
 
     fn append_until(&mut self, bytes: &mut Self::Bytes, mut stop: impl FnMut(&[u8], u8) -> bool) {
-        let prefix = bytes.len();
+        // in my end is your beginning
+        debug_assert_eq!(
+            bytes.as_ptr() as usize + bytes.len(),
+            self.slice.as_ptr() as usize
+        );
         // rewind by prefix length
-        self.slice = &self.whole[self.offset() - prefix..];
-        let mut iter = self.slice.iter().enumerate().skip(prefix);
+        self.slice = &self.whole[self.offset() - bytes.len()..];
+        let mut iter = self.slice.iter().enumerate().skip(bytes.len());
         let pos = iter
             .find(|(i, c)| stop(&self.slice[..*i], **c))
             .map_or(self.slice.len(), |(i, _c)| i);
@@ -46,7 +52,7 @@ impl<'a> Write for crate::SliceLexer<'a> {
     }
 
     fn write_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(&[u8], u8) -> bool) {
-        *bytes = &[];
+        *bytes = &self.slice[..0];
         self.append_until(bytes, stop)
     }
 }

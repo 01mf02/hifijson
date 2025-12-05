@@ -113,14 +113,15 @@ pub trait LexWrite: Lex + Write {
     }
 
     /// Write a prefix and a number to a string and save its parts.
-    fn num_string(&mut self, prefix: &'static str) -> Result<(Self::Num, Parts), Error>;
+    fn num_string(&mut self, prefix: &str) -> Result<(Self::Num, Parts), Error>;
 }
 
 impl<'a> LexWrite for crate::SliceLexer<'a> {
     type Num = &'a str;
 
-    fn num_string(&mut self, prefix: &'static str) -> Result<(Self::Num, Parts), Error> {
-        let mut num = prefix.as_bytes();
+    fn num_string(&mut self, prefix: &str) -> Result<(Self::Num, Parts), Error> {
+        let mut num = &self.whole[self.offset() - prefix.as_bytes().len()..self.offset()];
+        debug_assert_eq!(num, prefix.as_bytes());
         let parts = self.num_bytes(&mut num)?;
         // SAFETY: conversion to UTF-8 always succeeds because
         // lex_number validates everything it writes to num
@@ -132,7 +133,7 @@ impl<'a> LexWrite for crate::SliceLexer<'a> {
 impl<E, I: Iterator<Item = Result<u8, E>>> LexWrite for crate::IterLexer<E, I> {
     type Num = alloc::string::String;
 
-    fn num_string(&mut self, prefix: &'static str) -> Result<(Self::Num, Parts), Error> {
+    fn num_string(&mut self, prefix: &str) -> Result<(Self::Num, Parts), Error> {
         let mut num = prefix.into();
         let parts = self.num_bytes(&mut num)?;
         // SAFETY: conversion to UTF-8 always succeeds because

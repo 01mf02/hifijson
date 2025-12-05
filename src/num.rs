@@ -4,10 +4,10 @@
 //! [`Lex::num_ignore`] and
 //! [`LexWrite::num_string`],
 //! accept numbers corresponding to the regex
-//! `\d+(\.\d+)?([eE]\d+)?`.
+//! `\d+(\.\d+)?([eE][+-]?\d+)?`.
 //! This is strictly more general than the JSON specification,
 //! which specifies numbers as
-//! `(0|[1-9]\d*)(\.\d+)?([eE]\d+)?`.
+//! `(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?`.
 //! That excludes numbers like `007`, which are accepted by the former regex.
 //!
 //! If you require stricter conformance to JSON numbers,
@@ -90,6 +90,7 @@ impl Parts {
                 self.exp = Some(len);
                 false
             }
+            b'+' | b'-' if self.exp.map(|i| i + 1) == Some(len) => false,
             _ => true,
         }
     }

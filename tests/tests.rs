@@ -121,9 +121,14 @@ fn numbers() -> Result<(), Error> {
     parses_to(b"299e6", num("299e6", None, Some(3)))?;
     // now a bit more precise
     parses_to(b"299.792e6", num("299.792e6", Some(3), Some(7)))?;
-    parses_to(b"-1.2e3", num("-1.2e3", Some(2), Some(4)))?;
+    parses_to(b"-1.2e+3", num("-1.2e+3", Some(2), Some(4)))?;
+    parses_to(b"-1.2e-3", num("-1.2e-3", Some(2), Some(4)))?;
 
     fails_with(b"-", num::Error::ExpectedDigit.into());
+    fails_with(b"1.", num::Error::ExpectedDigit.into());
+    fails_with(b"1e", num::Error::ExpectedDigit.into());
+    fails_with(b"1e+", num::Error::ExpectedDigit.into());
+    fails_with(b"1e-", num::Error::ExpectedDigit.into());
 
     Ok(())
 }

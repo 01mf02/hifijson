@@ -31,7 +31,7 @@ impl<'a> Write for crate::SliceLexer<'a> {
     type Bytes = &'a [u8];
 
     fn write_until(&mut self, bytes: &mut Self::Bytes, stop: impl FnMut(u8) -> bool) {
-        let pos = self.slice.iter().cloned().position(stop);
+        let pos = self.slice.iter().copied().position(stop);
         let pos = pos.unwrap_or(self.slice.len());
         *bytes = &self.slice[..pos];
         self.slice = &self.slice[pos..]

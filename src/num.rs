@@ -52,7 +52,25 @@ pub struct Parts {
     pub exp: bool,
 }
 
-/// Positions of various parts in the string representation of a number.
+/// Read character(s) and parts of a number prefix.
+///
+/// The type [`Num`] stores the number lexer state.
+/// Functions like
+/// [`LexWrite::num_bytes`] or
+/// [`LexWrite::num_string`]
+/// return the string representation `R` of the number prefix via [`Num<R>`].
+///
+/// JSON numbers start with a string corresponding to the regex
+/// `-?(0|[1-9]\d*)`.
+/// By initialising the number lexers in this module with a custom lexer state,
+/// such as [`LexWrite::num_string_with`] with [`Num::signed_digits`],
+/// you can lex numbers that
+/// start with strings corresponding to different regexes.
+///
+/// This type does not only store valid numbers,
+/// but more generally valid number _prefixes_, such as `"1."`.
+/// Use [`Num::validated`] or [`Num::validate`] to check whether
+/// a number prefix is actually a valid JSON number.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Num<R = u8> {
     read: R,
@@ -138,7 +156,7 @@ pub trait Lex: Read {
         self.num_ignore_with(Num::default())
     }
 
-    /// Lex a number without saving its contents, using an initial number state.
+    /// Lex a number without saving its contents, using an initial lexer state.
     fn num_ignore_with(&mut self, mut num: Num) -> Num {
         self.skip_until(|c| !num.num_part(c));
         num
@@ -157,7 +175,7 @@ pub trait LexWrite: Lex + Write {
         self.num_bytes_with(Num::default())
     }
 
-    /// Write a number to bytes, using an initial number state.
+    /// Write a number to bytes, using an initial lexer state.
     ///
     /// The initial number state allows you to lex number formats that
     /// diverge from the JSON specification.
@@ -175,7 +193,7 @@ pub trait LexWrite: Lex + Write {
         self.num_string_with(Num::default())
     }
 
-    /// Write a number to a string, using an initial number state.
+    /// Write a number to a string, using an initial lexer state.
     fn num_string_with(&mut self, num: Num) -> Num<Self::Num>;
 }
 

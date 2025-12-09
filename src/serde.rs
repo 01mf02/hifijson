@@ -63,7 +63,7 @@ macro_rules! deserialize_number {
         fn $deserialize<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
             use crate::Error::Num;
             let (n, _parts) = self.lexer.num_string().validated().map_err(Num)?;
-            visitor.$visit(parse_number(&n)?)
+            visitor.$visit(parse_number(n.as_ref())?)
         }
     };
 }
@@ -77,10 +77,11 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
     {
         let num = |lexer: &mut L, visitor: V| {
             let (n, parts) = lexer.num_string().validated().map_err(Num)?;
+            let n: &str = n.as_ref();
             match (n.starts_with("-"), parts.is_int()) {
-                (true, true) => visitor.visit_i64(parse_number(&n)?),
-                (false, true) => visitor.visit_u64(parse_number(&n)?),
-                (_, false) => visitor.visit_f64(parse_number(&n)?),
+                (true, true) => visitor.visit_i64(parse_number(n)?),
+                (false, true) => visitor.visit_u64(parse_number(n)?),
+                (_, false) => visitor.visit_f64(parse_number(n)?),
             }
         };
 
@@ -91,7 +92,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
                 Some(b) => visitor.visit_bool(b),
             },
             b'0'..=b'9' | b'-' => num(self.lexer, visitor),
-            b'"' => visitor.visit_str(&self.lexer.discarded().str_string().map_err(Str)?),
+            b'"' => visitor.visit_str(self.lexer.discarded().str_string().map_err(Str)?.as_ref()),
             b'[' => visitor.visit_seq(CommaSeparated::new(self.lexer.discarded())),
             b'{' => visitor.visit_map(CommaSeparated::new(self.lexer.discarded())),
             _ => Err(Expect::Value)?,

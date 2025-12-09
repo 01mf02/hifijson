@@ -80,8 +80,7 @@ fn parse<L: LexAlloc>(
     let nob = |o: Option<bool>| o.map(Value::Bool).unwrap_or(Value::Null);
     match next {
         b'a'..=b'z' => Ok(lexer.null_or_bool().map(nob).ok_or(Expect::Value)?),
-        b'-' => Ok(Value::Number(lexer.discarded().num_string("-")?)),
-        b'0'..=b'9' => Ok(Value::Number(lexer.num_string("")?)),
+        b'0'..=b'9' | b'-' => Ok(Value::Number(lexer.num_string().validated()?)),
         b'"' => Ok(Value::String(lexer.discarded().str_string()?)),
         b'[' => Ok(Value::Array({
             let mut arr = Vec::new();

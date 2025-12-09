@@ -143,15 +143,7 @@ fn lex<L: LexWrite>(next: u8, lexer: &mut L, print: fn(&[u8])) -> Result<(), Err
             Some(true) => b"true",
             Some(false) => b"false",
         }),
-        b'-' => {
-            print(b"-");
-            lex(b'0', lexer.discarded(), print)?
-        }
-        b'0'..=b'9' => {
-            let mut num = Default::default();
-            let _pos = lexer.num_bytes(&mut num)?;
-            print(&num)
-        }
+        b'0'..=b'9' | b'-' => print(&lexer.num_bytes().validated()?.0),
         b'"' => lex_string(lexer.discarded(), print)?,
         b'[' => {
             print(b"[");

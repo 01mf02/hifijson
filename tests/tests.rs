@@ -7,12 +7,10 @@ fn boole<Num, Str>(b: bool) -> Value<Num, Str> {
 }
 
 fn num<Str>(n: &str) -> Value<&str, Str> {
-    let pos_zero = n.starts_with("0").then_some(0);
-    let neg_zero = n.starts_with("-0").then_some(1);
     let parts = num::Parts {
-        zero: pos_zero.or(neg_zero),
-        dot: n.find('.'),
-        exp: n.find(['e', 'E']),
+        zero: n.starts_with("0") || n.starts_with("-0"),
+        dot: n.contains('.'),
+        exp: n.contains(['e', 'E']),
     };
     Value::Number((n, parts))
 }

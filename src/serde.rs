@@ -61,11 +61,8 @@ fn parse_number<T: core::str::FromStr>(n: &str) -> Result<T> {
 macro_rules! deserialize_number {
     ($deserialize:ident, $visit:ident) => {
         fn $deserialize<V: de::Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-            let (prefix, lexer) = match self.next {
-                b'-' => ("-", self.lexer.discarded()),
-                _ => ("", self.lexer),
-            };
-            let (n, _parts) = lexer.num_string(prefix).map_err(crate::Error::Num)?;
+            use crate::Error::Num;
+            let (n, _parts) = self.lexer.num_string().validated().map_err(Num)?;
             visitor.$visit(parse_number(&n)?)
         }
     };
@@ -78,12 +75,12 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
     where
         V: Visitor<'de>,
     {
-        let num = |lexer: &mut L, visitor: V, prefix: &str| {
-            let (n, parts) = lexer.num_string(prefix).map_err(Num)?;
-            match (parts.is_int(), prefix) {
-                (true, "-") => visitor.visit_i64(parse_number(&n)?),
-                (true, _) => visitor.visit_u64(parse_number(&n)?),
-                (false, _) => visitor.visit_f64(parse_number(&n)?),
+        let num = |lexer: &mut L, visitor: V| {
+            let (n, parts) = lexer.num_string().validated().map_err(Num)?;
+            match (n.starts_with("-"), parts.is_int()) {
+                (true, true) => visitor.visit_i64(parse_number(&n)?),
+                (false, true) => visitor.visit_u64(parse_number(&n)?),
+                (_, false) => visitor.visit_f64(parse_number(&n)?),
             }
         };
 
@@ -93,8 +90,7 @@ impl<'de, 'a, L: LexAlloc + 'de> de::Deserializer<'de> for TokenLexer<&'a mut L>
                 None => visitor.visit_unit(),
                 Some(b) => visitor.visit_bool(b),
             },
-            b'0'..=b'9' => num(self.lexer, visitor, ""),
-            b'-' => num(self.lexer.discarded(), visitor, "-"),
+            b'0'..=b'9' | b'-' => num(self.lexer, visitor),
             b'"' => visitor.visit_str(&self.lexer.discarded().str_string().map_err(Str)?),
             b'[' => visitor.visit_seq(CommaSeparated::new(self.lexer.discarded())),
             b'{' => visitor.visit_map(CommaSeparated::new(self.lexer.discarded())),

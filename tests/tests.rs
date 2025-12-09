@@ -62,7 +62,7 @@ fn parse_binary_string<L: LexAlloc>(next: u8, lexer: &mut L) -> Result<Vec<u8>, 
         Err(Error::Token(Expect::String))?
     }
     let on_string = |bytes: &mut L::Bytes, out: &mut Vec<u8>| {
-        out.extend_from_slice(bytes);
+        out.extend_from_slice(bytes.as_ref());
         Ok(())
     };
     let s = lexer.str_fold(Vec::new(), on_string, |lexer, out| {

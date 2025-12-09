@@ -4,7 +4,7 @@
 /// without allocating when the input is a slice.
 pub trait Write {
     /// Type of bytes to write to.
-    type Bytes: core::ops::Deref<Target = [u8]> + core::convert::AsRef<[u8]> + Default;
+    type Bytes: core::convert::AsRef<[u8]> + Default;
 
     /// Write input to `bytes` until `stop` yields true.
     ///
@@ -16,9 +16,9 @@ pub trait Write {
     /// fn test<L: hifijson::Write>(lexer: &mut L) {
     ///     let mut bytes = L::Bytes::default();
     ///     lexer.write_until(&mut bytes, |c| c == b' ');
-    ///     assert_eq!(&*bytes, b"Hello");
+    ///     assert_eq!(bytes.as_ref(), b"Hello");
     ///     lexer.write_until(&mut bytes, |_| false);
-    ///     assert_eq!(&*bytes, b" World");
+    ///     assert_eq!(bytes.as_ref(), b" World");
     /// }
     /// let s = b"Hello World";
     /// test(&mut hifijson::SliceLexer::new(s));

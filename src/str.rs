@@ -28,8 +28,7 @@
 
 use crate::escape;
 use crate::{Read, Write};
-use core::fmt;
-use core::ops::Deref;
+use core::{convert::AsRef, fmt};
 
 /// Wrapper type to facilitate printing strings as JSON.
 pub struct Display<Str>(Str);
@@ -41,10 +40,10 @@ impl<Str> Display<Str> {
     }
 }
 
-impl<Str: Deref<Target = str>> fmt::Display for Display<Str> {
+impl<Str: AsRef<str>> fmt::Display for Display<Str> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         '"'.fmt(f)?;
-        for c in self.0.chars() {
+        for c in self.0.as_ref().chars() {
             match c {
                 '\\' | '"' | '\n' | '\r' | '\t' => c.escape_default().try_for_each(|c| c.fmt(f)),
                 c if (c as u32) < 20 => write!(f, "\\u{:04x}", c as u16),
@@ -224,7 +223,7 @@ impl<T> LexWrite for T where T: Read + Write {}
 /// allocates when lexing from slices that contain escape sequences.
 pub trait LexAlloc: LexWrite {
     /// The type of string that we are lexing into.
-    type Str: Deref<Target = str>;
+    type Str: AsRef<str>;
 
     /// Lex a JSON string to a Rust string.
     fn str_string(&mut self) -> Result<Self::Str, Error>;

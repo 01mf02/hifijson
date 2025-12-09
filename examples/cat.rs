@@ -124,7 +124,7 @@ fn filter<L: LexAlloc>(
                 let key = lexer.str_string().map_err(Error::Str)?;
                 lexer.expect(L::ws_peek, b':').ok_or(Expect::Colon)?;
                 let next = lexer.ws_peek().ok_or(Expect::Value)?;
-                if elem.strs.is_empty() || elem.strs.iter().any(|s| s == key.deref()) {
+                if elem.strs.is_empty() || elem.strs.iter().any(|s| s == key.as_ref()) {
                     filter(rest, next, lexer, print)
                 } else {
                     hifijson::ignore::parse(next, lexer)
@@ -143,7 +143,7 @@ fn lex<L: LexWrite>(next: u8, lexer: &mut L, print: fn(&[u8])) -> Result<(), Err
             Some(true) => b"true",
             Some(false) => b"false",
         }),
-        b'0'..=b'9' | b'-' => print(&lexer.num_bytes().validated()?.0),
+        b'0'..=b'9' | b'-' => print(lexer.num_bytes().validated()?.0.as_ref()),
         b'"' => lex_string(lexer.discarded(), print)?,
         b'[' => {
             print(b"[");
@@ -182,7 +182,7 @@ fn lex_string<L: LexWrite>(lexer: &mut L, print: fn(&[u8])) -> Result<(), str::E
     print(b"\"");
     let mut bytes = L::Bytes::default();
     lexer.str_bytes(&mut bytes)?;
-    print(&bytes);
+    print(bytes.as_ref());
     print(b"\"");
     Ok(())
 }

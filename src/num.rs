@@ -18,7 +18,8 @@
 //! more liberal formats that do not have the problem illustrated here.
 //! See [`LexWrite::num_bytes_with`] for an example.
 use crate::{Read, Write};
-use core::fmt::{self, Display};
+use core::{convert::AsRef, fmt};
+
 /// Number lexing error.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
@@ -32,7 +33,7 @@ pub enum Error {
     ExpectedDigit,
 }
 
-impl Display for Error {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::ExpectedDigit => "expected digit".fmt(f),
@@ -121,7 +122,7 @@ impl Parts {
     }
 }
 
-impl<B: core::convert::AsRef<[u8]>> Num<B> {
+impl<B: AsRef<[u8]>> Num<B> {
     /// Return the contents and the [`Parts`] of the number if it is valid.
     pub fn validated(self) -> Result<(B, Parts), Error> {
         let Self { read, parts } = self;
@@ -149,7 +150,7 @@ impl<T> Lex for T where T: Read {}
 /// Number lexing, keeping the number.
 pub trait LexWrite: Lex + Write {
     /// String type to save numbers as.
-    type Num: core::ops::Deref<Target = str> + core::convert::AsRef<[u8]>;
+    type Num: AsRef<str> + AsRef<[u8]>;
 
     /// Write a number to bytes.
     fn num_bytes(&mut self) -> Num<Self::Bytes> {

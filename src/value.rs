@@ -3,8 +3,7 @@
 use crate::token::Expect;
 use crate::{num, str, Error, LexAlloc};
 use alloc::vec::Vec;
-use core::fmt;
-use core::ops::Deref;
+use core::{convert::AsRef, fmt};
 
 /// JSON value.
 #[derive(Debug)]
@@ -43,14 +42,14 @@ impl<NumL: PartialEq<NumR>, NumR, StrL: PartialEq<StrR>, StrR> PartialEq<Value<N
     }
 }
 
-impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<Num, Str> {
+impl<Num: AsRef<str>, Str: AsRef<str>> fmt::Display for Value<Num, Str> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Value::*;
         match self {
             Null => "null".fmt(f),
             Bool(b) => b.fmt(f),
-            Number((n, _)) => n.fmt(f),
-            String(s) => str::Display::new(&**s).fmt(f),
+            Number((n, _)) => n.as_ref().fmt(f),
+            String(s) => str::Display::new(s.as_ref()).fmt(f),
             Array(a) => {
                 "[".fmt(f)?;
                 let mut iter = a.iter();
@@ -60,7 +59,7 @@ impl<Num: Deref<Target = str>, Str: Deref<Target = str>> fmt::Display for Value<
             }
             Object(o) => {
                 "{".fmt(f)?;
-                let mut iter = o.iter().map(|(k, v)| (str::Display::new(&**k), v));
+                let mut iter = o.iter().map(|(k, v)| (str::Display::new(k.as_ref()), v));
                 iter.next()
                     .iter()
                     .try_for_each(|(k, v)| write!(f, "{}:{}", k, v))?;
@@ -80,8 +79,7 @@ fn parse<L: LexAlloc>(
     let nob = |o: Option<bool>| o.map(Value::Bool).unwrap_or(Value::Null);
     match next {
         b'a'..=b'z' => Ok(lexer.null_or_bool().map(nob).ok_or(Expect::Value)?),
-        b'-' => Ok(Value::Number(lexer.discarded().num_string("-")?)),
-        b'0'..=b'9' => Ok(Value::Number(lexer.num_string("")?)),
+        b'0'..=b'9' | b'-' => Ok(Value::Number(lexer.num_string().validated()?)),
         b'"' => Ok(Value::String(lexer.discarded().str_string()?)),
         b'[' => Ok(Value::Array({
             let mut arr = Vec::new();

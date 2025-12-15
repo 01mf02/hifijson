@@ -149,8 +149,7 @@
 //!     match next {
 //!         // the JSON values "null", "true", and "false"
 //!         b'a'..=b'z' => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
-//!         b'0'..=b'9' => Ok(lexer.num_ignore().map(|_| 1)?),
-//!         b'-' => count(b'0', lexer.discarded()),
+//!         b'0'..=b'9' | b'-' => Ok(lexer.num_ignore().validate().map(|_| 1)?),
 //!         b'"' => Ok(lexer.discarded().str_ignore().map(|_| 1)?),
 //!
 //!         // start of array
@@ -264,7 +263,6 @@ impl<T> LexAlloc for T where T: LexWrite + str::LexAlloc {}
 
 /// JSON lexer from a shared byte slice.
 pub struct SliceLexer<'a> {
-    whole: &'a [u8],
     slice: &'a [u8],
 }
 
@@ -275,20 +273,27 @@ impl<'a> SliceLexer<'a> {
     /// see for example the [memmap2](https://docs.rs/memmap2) crate.
     ///
     pub fn new(slice: &'a [u8]) -> Self {
-        let whole = slice;
-        Self { whole, slice }
+        Self { slice }
     }
 
     /// Return remaining input as a subslice of the original data.
     ///
-    /// This can be used to find the place where an error occurred.
+    /// This can be used to obtain the number of bytes consumed, e.g.
+    /// to find the place where an error occurred:
+    ///
+    /// ~~~
+    /// use hifijson::{token::Lex, value, Read};
+    /// let input = b"true false";
+    /// let mut lexer = hifijson::SliceLexer::new(input);
+    /// let parse = || Some(value::parse_unbounded(lexer.ws_peek()?, &mut lexer));
+    /// let mut vals = core::iter::from_fn(parse);
+    ///
+    /// assert_eq!(vals.next(), Some(Ok(value::Value::Bool(true))));
+    /// let offset = lexer.as_slice().as_ptr() as usize - input.as_ptr() as usize;
+    /// assert_eq!(offset, 4);
+    /// ~~~
     pub fn as_slice(&self) -> &'a [u8] {
         self.slice
-    }
-
-    /// Number of bytes consumed so far.
-    fn offset(&self) -> usize {
-        self.slice.as_ptr() as usize - self.whole.as_ptr() as usize
     }
 }
 

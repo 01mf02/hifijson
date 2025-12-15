@@ -1,22 +1,39 @@
-//! Positive numbers.
-
+//! Numbers.
+//!
+//! Conforming to the JSON specification, the lexers in this modules, in particular
+//! [`Lex::num_ignore`] and
+//! [`LexWrite::num_string`],
+//! accept numbers corresponding to the regex
+//! `-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?`.
+//!
+//! This leads numbers like `007` to be lexed as three separate numbers;
+//! `0`, `0`, and `7`.
+//! That is because after a leading `0`, the lexer expects only ".", "e" or "E",
+//! so when it sees another digit (such as "0" or "7"),
+//! it assumes that it is not part of the number.
+//!
+//! To prevent such behaviour, verify that numbers are not followed by a digit,
+//! e.g. with [`crate::Read::peek_next`].
+//! Alternatively, you can also instruct the number lexers to accept
+//! more liberal formats that do not have the problem illustrated here.
+//! See [`LexWrite::num_bytes_with`] for an example.
 use crate::{Read, Write};
-use core::fmt::{self, Display};
-use core::num::NonZeroUsize;
+use core::{convert::AsRef, fmt};
 
 /// Number lexing error.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     /// The only thing that can go wrong during number lexing is
-    /// that we are not reading even a single digit.
-    /// Once a single digit has been read,
-    /// unexpected sequences afterwards are ignored by this lexer.
-    /// For example, if the lexer encounters `42abc`,
-    /// it returns only `42` and does not touch `abc`.
+    /// that we are not reading a digit where we expected one.
+    /// For example:
+    ///
+    /// - `""`
+    /// - `"0."`
+    /// - `"0.1e"`
     ExpectedDigit,
 }
 
-impl Display for Error {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::ExpectedDigit => "expected digit".fmt(f),
@@ -24,90 +41,125 @@ impl Display for Error {
     }
 }
 
-/// Position of `.` and `e`/`E` in the string representation of a number.
-///
-/// Because a number cannot start with `.` or `e`/`E`,
-/// these positions must always be greater than zero.
+/// Parts of a number.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Parts {
-    /// position of the dot
-    pub dot: Option<NonZeroUsize>,
-    /// position of the exponent character (`e`/`E`)
-    pub exp: Option<NonZeroUsize>,
+    /// leading zero (`0`)
+    pub zero: bool,
+    /// dot (`.`)
+    pub dot: bool,
+    /// exponent character (`e`/`E`)
+    pub exp: bool,
+}
+
+/// Read character(s) and parts of a number prefix.
+///
+/// The type [`Num`] stores the number lexer state.
+/// Functions like
+/// [`LexWrite::num_bytes`] or
+/// [`LexWrite::num_string`]
+/// return the string representation `R` of the number prefix via [`Num<R>`].
+///
+/// JSON numbers start with a string corresponding to the regex
+/// `-?(0|[1-9]\d*)`.
+/// By initialising the number lexers in this module with a custom lexer state,
+/// such as [`LexWrite::num_string_with`] with [`Num::signed_digits`],
+/// you can lex numbers that
+/// start with strings corresponding to different regexes.
+///
+/// This type does not only store valid numbers,
+/// but more generally valid number _prefixes_, such as `"1."`.
+/// Use [`Num::validated`] or [`Num::validate`] to check whether
+/// a number prefix is actually a valid JSON number.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Num<R = u8> {
+    read: R,
+    parts: Parts,
+}
+
+impl Num {
+    /// Parse numbers starting with `[+-]?\d+`.
+    pub fn signed_digits() -> Self {
+        Self::default().map_read(|_| b'e')
+    }
+
+    /// Parse numbers starting with `\d+`.
+    pub fn unsigned_digits() -> Self {
+        Self::default().map_read(|_| b'.')
+    }
+
+    /// Returns whether the next character `c` is part of the current number.
+    fn num_part(&mut self, c: u8) -> bool {
+        let Parts { zero, dot, exp } = &mut self.parts;
+        match (self.read, c) {
+            (0, b'-') => (),
+            (0 | b'-', b'0') if !*dot && !*exp => *zero = true,
+            (_, b'0'..=b'9') if !*zero || *dot || *exp => (),
+            (b'0'..=b'9', b'.') if !*dot && !*exp => *dot = true,
+            (b'0'..=b'9', b'e' | b'E') if !*exp => *exp = true,
+            (b'e' | b'E', b'+' | b'-') => (),
+            _ => return false,
+        };
+        self.read = c;
+        true
+    }
+
+    /// Return the [`Parts`] of the number if it is valid.
+    pub fn validate(self) -> Result<Parts, Error> {
+        self.read
+            .is_ascii_digit()
+            .then(|| self.parts)
+            .ok_or(Error::ExpectedDigit)
+    }
+}
+
+impl<R> Num<R> {
+    /// Return the contents and the [`Parts`] of the number, even if it is invalid.
+    ///
+    /// Because number lexing does not fail,
+    /// this function can return contents that are not numbers, such as
+    /// `""` and `"1."`.
+    ///
+    /// This can be useful if you wish to parse supersets of JSON,
+    /// where you want to accept things like `"+Infinity"` as a number.
+    pub fn unvalidated(self) -> (R, Parts) {
+        (self.read, self.parts)
+    }
+
+    fn map_read<R2>(self, f: impl FnOnce(R) -> R2) -> Num<R2> {
+        let read = f(self.read);
+        let parts = self.parts;
+        Num { read, parts }
+    }
 }
 
 impl Parts {
     /// Return true if the number contains neither a dot not an exponent.
     pub fn is_int(&self) -> bool {
-        self.dot.is_none() && self.exp.is_none()
+        !self.dot && !self.exp
+    }
+}
+
+impl<B: AsRef<[u8]>> Num<B> {
+    /// Return the contents and the [`Parts`] of the number if it is valid.
+    pub fn validated(self) -> Result<(B, Parts), Error> {
+        let Self { read, parts } = self;
+        let valid = read.as_ref().last().map_or(false, u8::is_ascii_digit);
+        valid.then(|| (read, parts)).ok_or(Error::ExpectedDigit)
     }
 }
 
 /// Number lexing, ignoring the number.
 pub trait Lex: Read {
-    /// Perform `f` for every digit read and return the number of read bytes.
-    fn digits_foreach(&mut self, mut f: impl FnMut(u8)) -> usize {
-        let mut len = 0;
-        while let Some(digit @ (b'0'..=b'9')) = self.peek_next() {
-            f(digit);
-            self.take_next();
-            len += 1;
-        }
-        len
+    /// Lex a number without saving its contents.
+    fn num_ignore(&mut self) -> Num {
+        self.num_ignore_with(Num::default())
     }
 
-    /// Run function for every digit, fail if no digit encountered.
-    fn digits1_foreach(&mut self, f: impl FnMut(u8)) -> Result<NonZeroUsize, Error> {
-        NonZeroUsize::new(self.digits_foreach(f)).ok_or(Error::ExpectedDigit)
-    }
-
-    /// Run function for each character of a number.
-    fn num_foreach(&mut self, mut f: impl FnMut(u8)) -> Result<Parts, Error> {
-        let mut pos = 0;
-        let mut parts = Parts::default();
-
-        match self.take_next() {
-            Some(b'0') => {
-                f(b'0');
-                pos += 1;
-            }
-            Some(digit @ b'1'..=b'9') => {
-                f(digit);
-                pos += 1 + self.digits_foreach(&mut f);
-            }
-            _ => return Err(Error::ExpectedDigit),
-        }
-
-        loop {
-            match self.peek_next() {
-                Some(b'.') if parts.is_int() => {
-                    parts.dot = Some(NonZeroUsize::new(pos).unwrap());
-                    f(b'.');
-                    self.take_next();
-                    pos += 1 + self.digits1_foreach(&mut f)?.get();
-                }
-
-                Some(exp @ (b'e' | b'E')) if parts.exp.is_none() => {
-                    parts.exp = Some(NonZeroUsize::new(pos).unwrap());
-                    f(exp);
-                    self.take_next();
-
-                    if let Some(sign @ (b'+' | b'-')) = self.peek_next() {
-                        f(sign);
-                        self.take_next();
-                        pos += 1;
-                    }
-
-                    pos += 1 + self.digits1_foreach(&mut f)?.get();
-                }
-                _ => return Ok(parts),
-            }
-        }
-    }
-
-    /// Lex a number and ignore its contents, saving only its parts.
-    fn num_ignore(&mut self) -> Result<Parts, Error> {
-        self.num_foreach(|_| ())
+    /// Lex a number without saving its contents, using an initial lexer state.
+    fn num_ignore_with(&mut self, mut num: Num) -> Num {
+        self.skip_until(|c| !num.num_part(c));
+        num
     }
 }
 
@@ -116,90 +168,43 @@ impl<T> Lex for T where T: Read {}
 /// Number lexing, keeping the number.
 pub trait LexWrite: Lex + Write {
     /// String type to save numbers as.
-    type Num: core::ops::Deref<Target = str>;
+    type Num: AsRef<str> + AsRef<[u8]>;
 
-    /// Write a prefix and a number to bytes and save its parts.
+    /// Write a number to bytes.
+    fn num_bytes(&mut self) -> Num<Self::Bytes> {
+        self.num_bytes_with(Num::default())
+    }
+
+    /// Write a number to bytes, using an initial lexer state.
     ///
-    /// `prefix` must be a suffix of the previously consumed input.
-    /// Normally, you pass `b"-"` as prefix if you read "-" just before.
-    /// This allows you to include "-" in the bytes without allocation.
-    fn num_bytes(&mut self, bytes: &mut Self::Bytes, prefix: &[u8]) -> Result<Parts, Error>;
-    /// Write a prefix and a number to a string and save its parts.
-    fn num_string(&mut self, prefix: &str) -> Result<(Self::Num, Parts), Error>;
-}
+    /// The initial number state allows you to lex number formats that
+    /// diverge from the JSON specification.
+    /// For example, pass [`Num::signed_digits`] to lex
+    /// numbers starting with a `+` or `-` sign followed by
+    /// an arbitrary sequence of digits.
+    fn num_bytes_with(&mut self, mut num: Num) -> Num<Self::Bytes> {
+        let mut read = Default::default();
+        self.write_until(&mut read, |c| !num.num_part(c));
+        num.map_read(|_| read)
+    }
 
-fn digits(s: &[u8]) -> usize {
-    s.iter()
-        .position(|c| !c.is_ascii_digit())
-        .unwrap_or(s.len())
+    /// Write a number to a string.
+    fn num_string(&mut self) -> Num<Self::Num> {
+        self.num_string_with(Num::default())
+    }
+
+    /// Write a number to a string, using an initial lexer state.
+    fn num_string_with(&mut self, num: Num) -> Num<Self::Num>;
 }
 
 impl<'a> LexWrite for crate::SliceLexer<'a> {
     type Num = &'a str;
 
-    fn num_bytes(&mut self, bytes: &mut Self::Bytes, prefix: &[u8]) -> Result<Parts, Error> {
-        // rewind by prefix length
-        self.slice = &self.whole[self.offset() - prefix.len()..];
-        assert!(self.slice.starts_with(prefix));
-
-        let mut pos = prefix.len();
-        let mut parts = Parts::default();
-
-        let digits1 = |s| NonZeroUsize::new(digits(s)).ok_or(Error::ExpectedDigit);
-
-        pos += if self.slice.get(pos) == Some(&b'0') {
-            1
-        } else {
-            digits1(&self.slice[pos..])?.get()
-        };
-
-        loop {
-            match self.slice.get(pos) {
-                Some(b'.') if parts.dot.is_none() && parts.exp.is_none() => {
-                    parts.dot = Some(NonZeroUsize::new(pos).unwrap());
-                    pos += 1;
-                    pos += digits1(&self.slice[pos..])?.get()
-                }
-                Some(b'e' | b'E') if parts.exp.is_none() => {
-                    parts.exp = Some(NonZeroUsize::new(pos).unwrap());
-                    pos += 1;
-                    if matches!(self.slice.get(pos), Some(b'+' | b'-')) {
-                        pos += 1;
-                    }
-                    pos += digits1(&self.slice[pos..])?.get()
-                }
-                None | Some(_) => {
-                    *bytes = &self.slice[..pos];
-                    self.slice = &self.slice[pos..];
-                    return Ok(parts);
-                }
-            }
-        }
-    }
-
-    fn num_string(&mut self, prefix: &str) -> Result<(Self::Num, Parts), Error> {
-        let mut num = Default::default();
-        let parts = self.num_bytes(&mut num, prefix.as_bytes())?;
+    fn num_string_with(&mut self, num: Num) -> Num<Self::Num> {
         // SAFETY: conversion to UTF-8 always succeeds because
-        // lex_number validates everything it writes to num
-        Ok((core::str::from_utf8(num).unwrap(), parts))
-    }
-}
-
-#[cfg(feature = "alloc")]
-impl<E, I: Iterator<Item = Result<u8, E>>> crate::IterLexer<E, I> {
-    fn digits(&mut self, num: &mut <Self as Write>::Bytes) -> Result<(), Error> {
-        let mut some_digit = false;
-        while let Some(digit @ (b'0'..=b'9')) = self.peek_next() {
-            some_digit = true;
-            num.push(digit);
-            self.take_next();
-        }
-        if some_digit && self.error.is_none() {
-            Ok(())
-        } else {
-            Err(Error::ExpectedDigit)
-        }
+        // num_bytes validates everything it writes to num
+        self.num_bytes_with(num)
+            .map_read(|read| core::str::from_utf8(read).unwrap())
     }
 }
 
@@ -207,49 +212,10 @@ impl<E, I: Iterator<Item = Result<u8, E>>> crate::IterLexer<E, I> {
 impl<E, I: Iterator<Item = Result<u8, E>>> LexWrite for crate::IterLexer<E, I> {
     type Num = alloc::string::String;
 
-    fn num_bytes(&mut self, num: &mut Self::Bytes, prefix: &[u8]) -> Result<Parts, Error> {
-        num.extend(prefix);
-        let mut parts = Parts::default();
-
-        if self.peek_next() == Some(b'0') {
-            num.push(b'0');
-            self.take_next();
-        } else {
-            self.digits(num)?;
-        }
-
-        loop {
-            match self.peek_next() {
-                Some(b'.') if parts.dot.is_none() && parts.exp.is_none() => {
-                    parts.dot = Some(NonZeroUsize::new(num.len()).unwrap());
-                    num.push(b'.');
-                    self.take_next();
-
-                    self.digits(num)?;
-                }
-
-                Some(e @ (b'e' | b'E')) if parts.exp.is_none() => {
-                    parts.exp = Some(NonZeroUsize::new(num.len()).unwrap());
-                    num.push(e);
-                    self.take_next();
-
-                    if let Some(sign @ (b'+' | b'-')) = self.peek_next() {
-                        num.push(sign);
-                        self.take_next();
-                    }
-
-                    self.digits(num)?;
-                }
-                _ => return Ok(parts),
-            }
-        }
-    }
-
-    fn num_string(&mut self, prefix: &str) -> Result<(Self::Num, Parts), Error> {
-        let mut num = Default::default();
-        let parts = self.num_bytes(&mut num, prefix.as_bytes())?;
+    fn num_string_with(&mut self, num: Num) -> Num<Self::Num> {
         // SAFETY: conversion to UTF-8 always succeeds because
-        // lex_number validates everything it writes to num
-        Ok((alloc::string::String::from_utf8(num).unwrap(), parts))
+        // num_bytes validates everything it writes to num
+        self.num_bytes_with(num)
+            .map_read(|read| alloc::string::String::from_utf8(read).unwrap())
     }
 }

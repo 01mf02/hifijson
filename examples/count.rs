@@ -13,8 +13,7 @@ use hifijson::{Error, Expect, Lex};
 fn count<L: Lex>(next: u8, lexer: &mut L) -> Result<usize, hifijson::Error> {
     match next {
         b'a'..=b'z' => Ok(lexer.null_or_bool().map(|_| 1).ok_or(Expect::Value)?),
-        b'0'..=b'9' => Ok(lexer.num_ignore().map(|_| 1)?),
-        b'-' => Ok(lexer.discarded().num_ignore().map(|_| 1)?),
+        b'0'..=b'9' | b'-' => Ok(lexer.num_ignore().validate().map(|_| 1)?),
         b'"' => Ok(lexer.discarded().str_ignore().map(|_| 1)?),
         b'[' => {
             let mut sum = 1;

@@ -175,6 +175,47 @@ pub trait Lex: crate::Read {
         }
     }
 
+    /// Like [`Lex::try_seq`], but allows a trailing comma before the end delimiter.
+    ///
+    /// For example, this accepts both `[1, 2]` and `[1, 2,]`.
+    fn try_seq_trailing<E: From<Expect>, PF, F>(
+        &mut self,
+        end: u8,
+        mut pf: PF,
+        mut f: F,
+    ) -> Result<(), E>
+    where
+        PF: FnMut(&mut Self) -> Result<Option<u8>, E>,
+        F: FnMut(u8, &mut Self) -> Result<(), E>,
+    {
+        let mut next = pf(self)?.ok_or(Expect::ValueOrEnd)?;
+        if next == end {
+            self.take_next();
+            return Ok(());
+        }
+
+        loop {
+            f(next, self)?;
+            next = pf(self)?.ok_or(Expect::CommaOrEnd)?;
+            if next == end {
+                self.take_next();
+                return Ok(());
+            } else if next == b',' {
+                self.take_next();
+                next = match pf(self)? {
+                    Some(n) if n == end => {
+                        self.take_next();
+                        return Ok(());
+                    }
+                    Some(n) => n,
+                    None => return Err(Expect::Value.into()),
+                };
+            } else {
+                return Err(Expect::CommaOrEnd)?;
+            }
+        }
+    }
+
     /// Parse once using given function and assure that the function has consumed all tokens.
     fn exactly_one<T, E: From<Expect>, PF, F>(&mut self, mut pf: PF, f: F) -> Result<T, E>
     where

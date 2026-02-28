@@ -337,3 +337,44 @@ fn try_seq_peek_error() {
     assert_eq!(result, Err(TryError::Custom("comment not allowed")));
     assert_eq!(count, 1);
 }
+
+#[test]
+fn try_seq_trailing_ok() {
+    // Trailing comma: [1, 2,]
+    let mut lexer = SliceLexer::new(b"1, 2,]");
+    let mut count = 0;
+    let result: Result<(), TryError> =
+        lexer.try_seq_trailing(b']', |l| Ok(l.ws_peek()), |next, lexer| {
+            count += 1;
+            try_parse(next, lexer)
+        });
+    assert!(result.is_ok());
+    assert_eq!(count, 2);
+}
+
+#[test]
+fn try_seq_trailing_no_trailing() {
+    // No trailing comma: [1, 2]
+    let mut lexer = SliceLexer::new(b"1, 2]");
+    let mut count = 0;
+    let result: Result<(), TryError> =
+        lexer.try_seq_trailing(b']', |l| Ok(l.ws_peek()), |next, lexer| {
+            count += 1;
+            try_parse(next, lexer)
+        });
+    assert!(result.is_ok());
+    assert_eq!(count, 2);
+}
+
+#[test]
+fn try_seq_trailing_empty() {
+    let mut lexer = SliceLexer::new(b"]");
+    let mut count = 0;
+    let result: Result<(), TryError> =
+        lexer.try_seq_trailing(b']', |l| Ok(l.ws_peek()), |_next, _lexer| {
+            count += 1;
+            Ok(())
+        });
+    assert!(result.is_ok());
+    assert_eq!(count, 0);
+}

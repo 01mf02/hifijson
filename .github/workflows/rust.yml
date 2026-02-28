@@ -22,5 +22,11 @@ jobs:
       run: cargo build --no-default-features
     - name: Build with Serde
       run: cargo build --features serde
+    - name: Build with memchr
+      run: cargo build --features memchr
     - name: Run tests
       run: cargo test --features serde --verbose
+    - name: Run tests with memchr
+      run: cargo test --features memchr --verbose
+    - name: Run tests with all features
+      run: cargo test --all-features --verbose

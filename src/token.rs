@@ -139,6 +139,23 @@ pub trait Lex: crate::Read {
             Some(_) => Err(Expect::Eof)?,
         }
     }
+
+    /// Like [`Lex::exactly_one`], but with a fallible peek function.
+    ///
+    /// The peek function returns `Result<Option<u8>, E>` instead of `Option<u8>`,
+    /// allowing it to report errors (e.g. from comment parsing).
+    fn try_exactly_one<T, E: From<Expect>, PF, F>(&mut self, mut pf: PF, f: F) -> Result<T, E>
+    where
+        PF: FnMut(&mut Self) -> Result<Option<u8>, E>,
+        F: FnOnce(u8, &mut Self) -> Result<T, E>,
+    {
+        let next = pf(self)?.ok_or(Expect::Value)?;
+        let v = f(next, self)?;
+        match pf(self)? {
+            None => Ok(v),
+            Some(_) => Err(Expect::Eof)?,
+        }
+    }
 }
 
 impl<T> Lex for T where T: crate::Read {}

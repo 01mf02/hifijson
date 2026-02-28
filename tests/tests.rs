@@ -1,6 +1,6 @@
 use hifijson::token::Lex;
 use hifijson::value::{self, Value};
-use hifijson::{escape, ignore, num, str, Error, Expect, IterLexer, LexAlloc, SliceLexer};
+use hifijson::{escape, ignore, num, str, Error, Expect, IterLexer, LexAlloc, Read, SliceLexer};
 
 fn boole<Num, Str>(b: bool) -> Value<Num, Str> {
     Value::Bool(b)
@@ -221,4 +221,47 @@ fn binary_strings() -> Result<(), Error> {
     )?;
 
     Ok(())
+}
+
+/// A custom error type that can hold both Expect and a custom variant.
+#[derive(Debug, PartialEq, Eq)]
+enum TryError {
+    Token(Expect),
+    Custom(&'static str),
+}
+
+impl From<Expect> for TryError {
+    fn from(e: Expect) -> Self {
+        TryError::Token(e)
+    }
+}
+
+/// A fallible peek function that returns Err on '#' characters.
+fn try_ws_peek<L: Lex>(lexer: &mut L) -> Result<Option<u8>, TryError> {
+    lexer.eat_whitespace();
+    match lexer.peek_next() {
+        Some(b'#') => Err(TryError::Custom("comment not allowed")),
+        other => Ok(other),
+    }
+}
+
+fn try_parse(next: u8, lexer: &mut impl hifijson::Lex) -> Result<(), TryError> {
+    ignore::parse(next, lexer).map_err(|e| match e {
+        Error::Token(t) => TryError::Token(t),
+        e => TryError::Custom(Box::leak(format!("{e}").into_boxed_str())),
+    })
+}
+
+#[test]
+fn try_exactly_one_ok() {
+    let mut lexer = SliceLexer::new(b"true");
+    let result: Result<(), TryError> = lexer.try_exactly_one(try_ws_peek, try_parse);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn try_exactly_one_peek_error() {
+    let mut lexer = SliceLexer::new(b"# comment");
+    let result: Result<(), TryError> = lexer.try_exactly_one(try_ws_peek, try_parse);
+    assert_eq!(result, Err(TryError::Custom("comment not allowed")));
 }

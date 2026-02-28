@@ -293,3 +293,47 @@ fn try_expect_peek_error() {
         lexer.try_expect(try_ws_peek, b':');
     assert_eq!(result, Err(TryError::Custom("comment not allowed")));
 }
+
+#[test]
+fn try_seq_ok() {
+    // Parse sequence 1, 2, 3] using try_seq
+    let mut lexer = SliceLexer::new(b"1, 2, 3]");
+    let mut items = Vec::new();
+    let result: Result<(), TryError> =
+        lexer.try_seq(b']', |l| Ok(l.ws_peek()), |next, lexer| {
+            items.push(next);
+            ignore::parse(next, lexer).map_err(|e| match e {
+                Error::Token(t) => TryError::Token(t),
+                e => TryError::Custom(Box::leak(format!("{e}").into_boxed_str())),
+            })
+        });
+    assert!(result.is_ok());
+    assert_eq!(items.len(), 3);
+}
+
+#[test]
+fn try_seq_empty() {
+    let mut lexer = SliceLexer::new(b"]");
+    let mut items: Vec<u8> = Vec::new();
+    let result: Result<(), TryError> =
+        lexer.try_seq(b']', |l| Ok(l.ws_peek()), |next, _lexer| {
+            items.push(next);
+            Ok(())
+        });
+    assert!(result.is_ok());
+    assert!(items.is_empty());
+}
+
+#[test]
+fn try_seq_peek_error() {
+    let mut lexer = SliceLexer::new(b"1, # oops]");
+    let mut count = 0;
+    let result: Result<(), TryError> =
+        lexer.try_seq(b']', try_ws_peek, |next, lexer| {
+            count += 1;
+            try_parse(next, lexer)
+        });
+    // The '#' should cause try_ws_peek to error after parsing "1,"
+    assert_eq!(result, Err(TryError::Custom("comment not allowed")));
+    assert_eq!(count, 1);
+}

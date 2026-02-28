@@ -143,6 +143,38 @@ pub trait Lex: crate::Read {
         }
     }
 
+    /// Like [`Lex::seq`], but with a fallible peek function.
+    fn try_seq<E: From<Expect>, PF, F>(
+        &mut self,
+        end: u8,
+        mut pf: PF,
+        mut f: F,
+    ) -> Result<(), E>
+    where
+        PF: FnMut(&mut Self) -> Result<Option<u8>, E>,
+        F: FnMut(u8, &mut Self) -> Result<(), E>,
+    {
+        let mut next = pf(self)?.ok_or(Expect::ValueOrEnd)?;
+        if next == end {
+            self.take_next();
+            return Ok(());
+        }
+
+        loop {
+            f(next, self)?;
+            next = pf(self)?.ok_or(Expect::CommaOrEnd)?;
+            if next == end {
+                self.take_next();
+                return Ok(());
+            } else if next == b',' {
+                self.take_next();
+                next = pf(self)?.ok_or(Expect::Value)?;
+            } else {
+                return Err(Expect::CommaOrEnd)?;
+            }
+        }
+    }
+
     /// Parse once using given function and assure that the function has consumed all tokens.
     fn exactly_one<T, E: From<Expect>, PF, F>(&mut self, mut pf: PF, f: F) -> Result<T, E>
     where

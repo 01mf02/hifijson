@@ -378,3 +378,44 @@ fn try_seq_trailing_empty() {
     assert!(result.is_ok());
     assert_eq!(count, 0);
 }
+
+#[test]
+fn scan_string_body_simple() {
+    let mut lexer = SliceLexer::new(b"hello\"rest");
+    let body = lexer.scan_string_body();
+    assert_eq!(body, b"hello");
+    assert_eq!(lexer.peek_next(), Some(b'"'));
+}
+
+#[test]
+fn scan_string_body_with_escape() {
+    let mut lexer = SliceLexer::new(b"hello\\nworld\"");
+    let body = lexer.scan_string_body();
+    assert_eq!(body, b"hello");
+    assert_eq!(lexer.peek_next(), Some(b'\\'));
+}
+
+#[test]
+fn scan_string_body_control_char() {
+    let input = b"hello\x01world\"";
+    let mut lexer = SliceLexer::new(input);
+    let body = lexer.scan_string_body();
+    assert_eq!(body, b"hello");
+    assert_eq!(lexer.peek_next(), Some(0x01));
+}
+
+#[test]
+fn scan_string_body_empty() {
+    let mut lexer = SliceLexer::new(b"\"rest");
+    let body = lexer.scan_string_body();
+    assert_eq!(body, b"");
+    assert_eq!(lexer.peek_next(), Some(b'"'));
+}
+
+#[test]
+fn scan_string_body_no_terminator() {
+    let mut lexer = SliceLexer::new(b"abcdef");
+    let body = lexer.scan_string_body();
+    assert_eq!(body, b"abcdef");
+    assert_eq!(lexer.peek_next(), None);
+}

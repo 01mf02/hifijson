@@ -276,6 +276,49 @@ impl<'a> SliceLexer<'a> {
         Self { slice }
     }
 
+    /// Scan the body of a JSON string, advancing past plain characters.
+    ///
+    /// Returns all bytes before the first `"`, `\`, or ASCII control character
+    /// (`0x00..=0x1F`), and advances the lexer past them.
+    /// The terminating character itself is **not** consumed.
+    ///
+    /// This is useful for optimised string parsing: call this to grab the
+    /// non-escape portion of a string, then handle the escape or closing
+    /// quote byte that [`Read::peek_next`] now returns.
+    ///
+    /// When the `memchr` feature is enabled, this uses SIMD-accelerated
+    /// search to find `"` and `\`, then verifies no control character
+    /// appears before them.
+    pub fn scan_string_body(&mut self) -> &'a [u8] {
+        #[cfg(feature = "memchr")]
+        {
+            let delim = memchr::memchr2(b'"', b'\\', self.slice).unwrap_or(self.slice.len());
+            let ctrl = self.slice[..delim]
+                .iter()
+                .position(|&c| c <= 0x1F)
+                .unwrap_or(delim);
+            let (body, rest) = self.slice.split_at(ctrl);
+            self.slice = rest;
+            return body;
+        }
+
+        #[cfg(not(feature = "memchr"))]
+        {
+            fn string_end(c: u8) -> bool {
+                matches!(c, b'\\' | b'"' | 0..=0x1F)
+            }
+            let pos = self
+                .slice
+                .iter()
+                .copied()
+                .position(string_end)
+                .unwrap_or(self.slice.len());
+            let (body, rest) = self.slice.split_at(pos);
+            self.slice = rest;
+            body
+        }
+    }
+
     /// Return remaining input as a subslice of the original data.
     ///
     /// This can be used to obtain the number of bytes consumed, e.g.

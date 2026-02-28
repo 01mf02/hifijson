@@ -99,6 +99,23 @@ pub trait Lex: crate::Read {
         }
     }
 
+    /// Like [`Lex::expect`], but with a fallible peek function.
+    ///
+    /// Returns `Ok(Some(()))` if the peeked character matched,
+    /// `Ok(None)` if it did not match, or
+    /// `Err(e)` if the peek function itself failed.
+    fn try_expect<E>(
+        &mut self,
+        pf: impl FnOnce(&mut Self) -> Result<Option<u8>, E>,
+        expect: u8,
+    ) -> Result<Option<()>, E> {
+        if pf(self)? == Some(expect) {
+            Ok(self.take_next().map(|_| ()))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Execute `f` for every item in the comma-separated sequence until `end`.
     fn seq<E: From<Expect>, PF, F>(&mut self, end: u8, mut pf: PF, mut f: F) -> Result<(), E>
     where

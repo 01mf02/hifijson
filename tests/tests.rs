@@ -265,3 +265,31 @@ fn try_exactly_one_peek_error() {
     let result: Result<(), TryError> = lexer.try_exactly_one(try_ws_peek, try_parse);
     assert_eq!(result, Err(TryError::Custom("comment not allowed")));
 }
+
+#[test]
+fn try_expect_ok() {
+    let mut lexer = SliceLexer::new(b":value");
+    let result: Result<Option<()>, TryError> =
+        lexer.try_expect(|l| Ok(l.peek_next()), b':');
+    assert_eq!(result, Ok(Some(())));
+    // ':' should be consumed
+    assert_eq!(lexer.peek_next(), Some(b'v'));
+}
+
+#[test]
+fn try_expect_mismatch() {
+    let mut lexer = SliceLexer::new(b"xvalue");
+    let result: Result<Option<()>, TryError> =
+        lexer.try_expect(|l| Ok(l.peek_next()), b':');
+    assert_eq!(result, Ok(None));
+    // 'x' should NOT be consumed
+    assert_eq!(lexer.peek_next(), Some(b'x'));
+}
+
+#[test]
+fn try_expect_peek_error() {
+    let mut lexer = SliceLexer::new(b"# comment");
+    let result: Result<Option<()>, TryError> =
+        lexer.try_expect(try_ws_peek, b':');
+    assert_eq!(result, Err(TryError::Custom("comment not allowed")));
+}

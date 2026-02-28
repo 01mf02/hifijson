@@ -35,6 +35,7 @@ fn main() {
         ("pi", many("3.1415", N)),
         ("hello", many(r#""hello""#, N)),
         ("hello-world", many(r#""hello\nworld""#, N)),
+        ("long-string", many(&format!(r#""{}""#, "a".repeat(10_000)), N / 1000)),
         ("arr", many("[]", N)),
         ("tree", tree),
     ] {

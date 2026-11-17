@@ -1,6 +1,6 @@
 [package]
 name = "hifijson"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Michael Färber <michael.faerber@gedenkt.at>"]
 description = "High-fidelity JSON lexer and parser"
